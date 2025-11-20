@@ -1,0 +1,22 @@
+State transitions
+Switches
+RCMode: AUTO <-> MAN <-> OP
+OPMode: OP <-> AUTO
+ESTOP: OFF<-> ON
+Events
+RC_DATA: Valid data from RC	
+NO_RC: No data from RC
+RC_MAN: RC mode switch set to manual	
+RC_OP: RC mode switch set to operator
+RC_AUTO: RC mode switch set to auto	
+RC_BRAKE: RC applies brake
+CAN_MAN: Auto mode requests manual takeover	
+NO_CAN: No recent data from CAN
+OP_DATA: Switch change on operator panel	
+NO_OP: No operator action for too long
+OP_MAN: Operator switch set for manual	
+OP_AUTO: Operator switch set for auto
+OP_BRAKE: Operator applies brake
+OP_ESTP: Operator pushes E-stop button	
+OP_RTN: Operator resets E-stop button
+ 
