@@ -1,0 +1,98 @@
+Arduino pin	Signal	Indirect signal	Connector	Test point	Description	Bridge connector
+Analog In 07	OP_Steer		J1:1		Joystick left/right	
+Analog In 08	OP_Throttle		J1:2		Joystick up/down	
+Digital pin 34	OP_FWD_REV		J1:3		Operator selects forward/reverse	
+Digital pin 35	OP_Man/Auto		J1:4		Operator control enabled	
+Digital pin 37	OP_Disconnect		J1:5		Operator request to raise gate	
+Analog In 06	OP_Center		J1:6		Joystick Center	
+3.3V	3.3V		J1:7			
+Ground	Ground		J1:8			
+Digital pin 47	IRPT_WHEEL		J10:1		"Wheel click interrupt (""odometer""). Once per wheel revolution. Pulled to 3.3V"	D47
+Ground	Ground		J10:2			
+Digital pin 30	DBW_LED		J10:3		Debug	D30
+Digital pin 09	A_Brake		J10:4		Hold or change current steering	D09
+Digital pin 51	Red LED		J11:1->via 150 ? 		Jx:3 is ground	
+Digital pin 52	Green LED		J11:2_>via 150 ? 		For multicolor Mode:  Grn=manual; yel=auto	
+Ground	Ground		J11:3			
+Digital pin 53	Blue LED		J11:4->via 150 ? 		blu=op; red=estop; white=initial	
+CANRX	CANRX	CANH	J12:1		Chip converts CAN Rx/Tx to Hi/LO	CANH
+CANTX	CANTX	CANL	J12:2		Chip  converts CAN Rx/Tx to Hi/LO	CANL
+Ground	Ground		J12:3			
+Digital pin 27	Connected		J12:4		Input shows whether a vehicle is connected	
+Digital pin 49	ESTOP		J12:5		Resistor to pullup to 3.3V; operator Estop	
+Ground	Ground		J13:1			
+Digital pin 44	BRAKE_ON	via relay	J13:2		0/12/24V out to brakes	D48
+Digital pin 40	BRAKE_VOLT	Relay	J13:2		Brake relay for  selecting 12/24v power	D42
+24V in	24V in		J13:3			
+12V in	12V		J13:4			
+Digital pin 28	GATE_RAISE	via relay	J13:5		0/12V Power to gate raise motor	D02
+Digital pin 36	REV/FWDSW	5V_FWDSW	J2:1		Command to go forward or reverse	D40
+Analog In 09	Motor current	5V_Current	J2:2		Current draw from meter or regen	
+DAC1	Amount	5V_Amount	J2:3		Amount of regenerative braking	A01
+Digital pin 43	Regen	5V_Regen	J2:4		Command to e-bike controller to use regenerative braking	D47
+Digital pin 50	Spare	5V_Spare	J2:5		Kelly12 Feedback of reverse?	
+DAC0	Throttle	5V_Throttle	J2:6		Throttle output as analog	A00
+Digital pin 22	Speedometer	5V_Speedometer	J2:7		Future  speed from motor	D10
+Digital pin 45	EBIKE_POWER_IN	5V_EBIKE_POWER_IN	J2:8		Should be high unless e-bike controller has failed	D49
+Analog In 10*	L_RTN	Jumper A	J3:1		left sensor return	
+ICSP 1	MISO	Jumper B	J3:1		MISO: left sensor input or SD card	
+Analog In 10	L_SENSE	3.3V(L_ang-L_Rtn)	J3:1;2		Wheel angle from left steering column	DAC 0 (Jumper)
+Analog In 10*	L_ANG	Jumper A	J3:2		LM358D differential amp produces 5V_L_SENSE = L_ANGLE-L_RTN	
+Digital pin 39	CS angle sensor	Jumper B	J3:2		Chip select for digital angle sensor	
+Analog In 11*	R_RTN	Jumper A	J3:3		Right sensorraw input/ Clock	
+ICSP 3	SCK	Jumper B	J3:3		Clock for SPI	
+Analog In 11	R_SENSE	3.3V(R_Ang-R_Rtn)	J3:3;4		Wheel angle from sensor on right steering column	DAC 1 (Jumper)
+Analog In 11*	R_ANG	Jumper A	J3:4		LM358D differential amp produces 5V_R_SENSE = R_ANGLE-R_RTN	
+ICSP 4	MOSI	Jumper B	J3:4		Right sensor return or out to SD card	
+Digital pin 48	R_TURN		J3:6		Right turn with L_TURN lo; R_TURN hi	D52
+Digital pin 48	STEER_PWM		J3:6		Pin used to steer the vehicle with a pulse	D52
+Digital pin 41	L_TURN		J3:7		left turn with L_TURN hi; R_TURN lo	D43
+Digital pin 42	STEER_CH1	CH1	J4:1		RC for manual steering as digital PWM	D48
+Digital pin 46	THROTTLE_CH2	Ch2	J4:2		RC for manual throttle as digital PWM	D51
+Digital pin 25	Fwd/Reverse	CH3	J4:3		RC Fwd/reverse requested	
+Digital pin 32	Man/Auto	CH4	J4:4		RC switch to Auto	D39
+Digital pin 31	Disconnect	CH5	J4:5		RC Request to raise gate	
+Digital pin 26	CH6	CH6	J4:6		RC Reserved	D04
+3.3V	3.3V		J5			
+Ground	Ground		J6			
+Ground	Ground	RTC	J7:1			
+5V	5V	RTC	J7:2			
+Digital pin 21	SCL	RTC	J7:3		Clock for Adafruit 3296 RTC	
+Digital pin 20	SDA	RTC	J7:4		SDA data for RTC address 0x68	
+Digital pin 33	CS SD	SD	J8:2		SD card chip select	
+ICSP 4	MOSI	SD	J8:3		Data logging	
+ICSP 1	MISO	SD	J8:4			
+ICSP 3	SCK	SD	J8:5			
+Ground	Ground	SD	J8:6			
+5V	5V	SD	J8:8			
+5V	5V		J9:1			
+Digital pin 16	Tx2 		J9:2		UART transmit	
+Digital pin 17	Rx2 		J9:3		UART receive	
+Digital pin 24	CTS		J9:4		UART Clear to send	D07
+Digital pin 23	RTS		J9:5		UART Request to send	
+Ground	Ground		J9:6			
+Analog In 00	A_Current	On Motor shield			A = Steer motor	
+Analog In 01	B_Current	On Motor shield			B = Motor to raise gate & uncouple vehicles	
+Analog In 02	In2	On Motor shield			 	DAC 0 (Jumper)
+Analog In 03	In3	On Motor shield			 	DAC 1 (Jumper)
+Analog In 04						
+Analog In 05	 					
+Digital pin 00	RX0				Serial Monitor	D18
+Digital pin 01	TX0				Serial Monitor	D19
+Digital pin 02	X					
+Digital pin 03	A_Speed	On Motor shield			PWM for speed of steering motor	D03
+Digital pin 04	X					
+Digital pin 05	Out5	On Motor shield			 	D05
+Digital pin 06	Out6	On Motor shield			 	D06
+Digital pin 07	Gate_limit				Limit switch for gate top	
+Digital pin 08	B_Brake	On Motor shield			Keep gate in position or move it	D08
+Digital pin 10						
+Digital pin 11	MOSI/B_Speed	On Motor shield			PWM for speed of uncoupling motor	D11
+Digital pin 12	MISO/A_direction	On Motor shield			Steer left or right	D12
+Digital Pin 13	SCK/B_direction	On Motor shield			Move gate up or down	D13
+Digital pin 14	TX3				Spare	
+Digital pin 15	RX3				Spare	
+Digital pin 18	TX1				Spare	D17
+Digital pin 19	RX1				Spare	D16
+Digital pin 29	Spare				Spare	
+Digital pin 38	Spare				Spare	D41
