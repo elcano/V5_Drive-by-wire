@@ -8,11 +8,31 @@
 #include <Arduino.h>
 #include "DBW_Pins.h"
 #include "Vehicle.h"
+#include "Can_Protocol.h"
 
 tmElements_t tm;
 extern Vehicle myTrike;
 
 /****************************************************************************
+ Data Logger
+ Record all stste data on each time slice.
+ This is the priomary method for debugging. Add new parameters as needed.
+ The data log provides information useful for crafting control strategies and simulators.
+
+ The original method was to log to an SD card.
+ Options have been added to log to CAN or a serial connection.
+ The CAN device handling logging will respond to the appropriate messages and write the log.
+
+ The serial device could be any of the four lines on the Due
+ Serial goes to the serial monitor on the Due, but is confounded by other messages
+ On the Bridge circuit board, DBW Serial1 is connected to router serial 2.
+ On the DBW v5 board, Serial2 goes to connector J9
+ Serial3 could also be used.  
+ The receiving serial device could display data on its serial monitor or write it to a file.
+
+ In DBW_Pins.h, set serialLOG to logfile (for SD) or to one of the four serial ports.
+ In Logger::Initialize, set logMethod to 0 for SD, 1 for Serial or 2 for CAN.
+
    Constructor
  ****************************************************************************/
 Logger::Logger() 
@@ -31,26 +51,42 @@ Logger::~Logger() {
 Initialize RTC and SD Card
 ********************************/ 
 void Logger::initialize() {
-  Serial.println("initialize() starting");
-  if (!initRTC())
-  {
+  initRTC();
+
+  logMethod = serialLOG==logfile? 0:1;  // set 0 for SD, 1 for serial, 2 for CAN
+  // logMethod = 2;  // CAN
+  if (logMethod == 0 && !initSD())
+  {   // SD Card failed");
+    logMethod = 2;   // USE CAN
   }
-  if (!initSD())
-  {
-    Serial.println("Card failed, or not present");
-    return;
+ 
+ #if (serialLOG != logfile)
+  if (logMethod == 1 && serialLOG != Serial)
+  {  // if using serial monitor, it has already been started
+     serialLOG.begin(115200);
   }
-  else
-    Serial.println("Card initialized.");
-  if (openSD())
+#endif
+  if (logMethod == 0 && !openSD())
+    logMethod == 2;  // use CAN if SD doesn't work
+ 
+  if (logMethod == 2)
+  {  // CAN will open a file and write header information
+    CAN_FRAME* outCAN = getCAN(myTrike);
+    outCAN->length = 0;
+    outCAN->id = Header_CANID;
+    myTrike.sendCan();
+    CANlogID = Log_CANID;
+    Serial.println("CAN log initialized");
+  }
+  else  // SD or serial
   {
     //Write CSV Header 
-    logfile.print(VEHICLE_NAME);
-    logfile.print(",");
-    logfile.print(timeString);
-    logfile.print(",");
-    logfile.println(dateString);
-    
+    serialLOG.print(VEHICLE_NAME);
+    serialLOG.print(",");
+    serialLOG.print(timeString);
+    serialLOG.print(",");
+    serialLOG.println(dateString);   
+    // Write snd line of header
     HdrTime();
     HdrRC();
     HdrDesired();
@@ -58,8 +94,12 @@ void Logger::initialize() {
     HdrBrakes();
     HdrSteer();
     HdrEndLine();
+    if (logMethod == 0)
+      Serial.println("SD log initialized.");
+    else
+      Serial.println("Serial Log initialized.");
   }
-  Serial.println("initialize() finished");
+  
 }
 /*******************************
 Initialize real time clock
@@ -156,136 +196,249 @@ bool Logger::openSD()
   return (true);
 }
 /****************************************
-Write a new set of data to the SD card
+Write a new set of data to the SD card or serial or CAN
 ****************************************/ 
 void Logger::update(){
- // Log data to the file
- if (!logfile) {
-  return;
-}
-  Time();
-  LogRC();
-  Desired();
-  Throttle();
-  Brakes();
-  Steer();  
+ 
+  if (logMethod != 2)
+  {
+    TxTime();
+    TxLogRC();
+    TxDesired();
+    TxThrottle();
+    TxBrakes();
+    TxSteer();  
+  }
+  else
+  {
+    CANTime();
+    CANLogRC();
+    CANDesired();
+    CANThrottle();
+    CANBrakes();
+    CANSteer();  
+ }
   // Need to finish with EndLine();
 }
 /******************************************************
 Line starts with a relative time stamp in milliseconds
 *******************************************************/ 
 void Logger::HdrTime() {
-  logfile.print("time_ms");
+    serialLOG.print("time_ms");
 }
-void Logger::Time()
+void Logger::TxTime()
 {
-   logfile.print(millis());
+   serialLOG.print(millis());
+}
+void Logger::CANTime()
+{
+  unsigned long time = millis();
+  CAN_FRAME* outCAN = getCAN(myTrike);
+  outCAN->length = 4;
+  outCAN->id = CANlogID++;
+  outCAN->data.uint32[0] = time;
+  myTrike.sendCan();
 }
 /******************************************************
 Include what has been commanded by Radio Control
 *******************************************************/ 
 void Logger::HdrRC() {
   // expected order
-  // logfile.print(",Ch1,Ch2,Ch3,Ch4,Ch5,Ch6");
-  // logfile.print(",Map1,Map2,DriveMode,AutoMode,Map5,Map6");
+  // serialLOG.print(",Ch1,Ch2,Ch3,Ch4,Ch5,Ch6");
+  // serialLOG.print(",Map1,Map2,DriveMode,AutoMode,Map5,Map6");
   // What we see
-  logfile.print(",Ch4,Ch3,Ch6,Ch1Str,Ch2ThB,Ch5");
-  logfile.print(",Map5,Map6,MapStr,MapThB,Map3,AutoMode");
+
+    serialLOG.print(",Ch4,Ch3,Ch6,Ch1Str,Ch2ThB,Ch5");
+    serialLOG.print(",Map5,Map6,MapStr,MapThB,Map3,AutoMode");
 }
-void Logger::LogRC() {
+
+void Logger::TxLogRC() {
   int i;
+  unsigned long data;
   long mappd;
   static bool first_time = true; 
-  logfile.print(",");
-  logfile.print( getRCtime1(myTrike));
-  for (i = 1; i < RC_NUM_SIGNALS; i++) {
-    logfile.print(",");
-    logfile.print( getRCtime(myTrike, i));
-    }
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    logfile.print(",");
-    mappd = getRCmapped(myTrike, i);
-    logfile.print(mappd);
+    data = getRCtime(myTrike, i);
+    serialLOG.print(",");
+    serialLOG.print(data);
   }
-   if (first_time)
-  {
+  for (i = 0; i < RC_NUM_SIGNALS; i++) {
+    mappd = getRCmapped(myTrike, i);
+    serialLOG.print(",");
+    serialLOG.print(mappd);
+  }
+  if (first_time)
+  {  // Show on serial monitor
     for (int i = 0; i < RC_NUM_SIGNALS; i++) {
-    Serial.print(getRCtime(myTrike, i));
-    Serial.print(", ");
+      data = getRCtime(myTrike, i);
+      Serial.print(data);
+      Serial.print(", ");
    }
-    Serial.println(" ");
+   Serial.println(" ");
    for (int i = 0; i < RC_NUM_SIGNALS; i++) {
-    Serial.print(getRCmapped(myTrike, i));
+    mappd = getRCmapped(myTrike, i);
+    Serial.print(mappd);
     Serial.print(", ");
    }
     Serial.println(" ");
     first_time = false;
   }
 }
+void Logger::CANLogRC() {
+  int i;
+  unsigned long data;
+  long mappd;
+  CAN_FRAME* outCAN = getCAN(myTrike);
+
+  outCAN->length = 2;  // assumes RC_NUM_SIGNALS is even
+  for (i = 0; i < RC_NUM_SIGNALS; i++) {
+    data = getRCtime(myTrike, i++);
+    outCAN->data.uint32[0] = data;
+    data = getRCtime(myTrike, i);
+    outCAN->data.uint32[1] = data;
+    outCAN->id = CANlogID++;
+    myTrike.sendCan();
+    }
+  for (i = 0; i < RC_NUM_SIGNALS; i++) {
+    mappd = getRCmapped(myTrike, i++);
+    outCAN->data.int32[0] = mappd;
+    mappd = getRCmapped(myTrike, i);
+    outCAN->data.int32[1] = data;
+    outCAN->id = CANlogID++;
+    myTrike.sendCan();
+  }
+}
 /******************************************************
 Include wthe goals, either from RC or CAN
 *******************************************************/ 
 void Logger::HdrDesired() {
-  logfile.print(",desired_speed_ms,desired_brake,desired_angle_DegX10");
+  serialLOG.print(",desired_speed_ms,desired_brake,desired_angle_DegX10");
 }
-void Logger::Desired() {
-  logfile.print(",");
-  logfile.print( getD_speed_mmPs(myTrike));
-  logfile.print(",");
-  logfile.print( getD_brakes(myTrike));
-  logfile.print(",");
-  logfile.print( getD_Angle(myTrike));
+void Logger::TxDesired() {
+  serialLOG.print(",");
+  serialLOG.print( getD_speed_cmPs(myTrike));
+  serialLOG.print(",");
+  serialLOG.print( getD_brakes(myTrike));
+  serialLOG.print(",");
+  serialLOG.print( getD_Angle(myTrike));
+}
+void Logger::CANDesired() {
+  unsigned long data;
+  CAN_FRAME* outCAN = getCAN(myTrike);
+  outCAN->length = 8;
+  outCAN->id = CANlogID++;
+  data = getD_speed_cmPs(myTrike);
+  outCAN->data.uint32[0] = data;
+  data = getD_brakes(myTrike);
+  outCAN->data.uint32[1] = data;
+  myTrike.sendCan();
+
+  outCAN->length = 4;
+  outCAN->id = CANlogID++;
+  data = getD_Angle(myTrike);
+  outCAN->data.uint32[0] = data;
+  myTrike.sendCan();
 }
 /******************************************************
 Report sensors and actuators for steering
 *******************************************************/ 
 void Logger::HdrSteer() {
-  logfile.print(",current_angle,Rturn,Lturn");
+  serialLOG.print(",current_angle,Rturn,Lturn");
 }
-void Logger::Steer() {
-  logfile.print(",");
-  logfile.print(getAngle(myTrike));
-  logfile.print(",");
-  logfile.print(digitalRead(RIGHT_TURN_PIN));
-  logfile.print(",");
-  logfile.print(digitalRead(LEFT_TURN_PIN));
+
+void Logger::TxSteer() {
+  serialLOG.print(",");
+  serialLOG.print(getAngle(myTrike));
+  serialLOG.print(",");
+  serialLOG.print(digitalRead(RIGHT_TURN_PIN));
+  serialLOG.print(",");
+  serialLOG.print(digitalRead(LEFT_TURN_PIN));
+} 
+void Logger::CANSteer() {
+  
+  unsigned long data;
+  int turn;
+  CAN_FRAME* outCAN = getCAN(myTrike);
+  outCAN->length = 8;
+  outCAN->id = CANlogID++;
+   data = getAngle(myTrike);
+  outCAN->data.uint32[0] = data;
+  turn = digitalRead(RIGHT_TURN_PIN);
+  outCAN->data.int16[2] = turn;
+  turn = digitalRead(LEFT_TURN_PIN);
+  outCAN->data.int16[3] = turn;
+  myTrike.sendCan();
 } 
 /******************************************************
 Report sensors and actuators for propulsion
 *******************************************************/ 
 void Logger::HdrThrottle() {
-  logfile.print(",current_speed,driveMode");
+  serialLOG.print(",current_speed,driveMode");
 }
-void Logger::Throttle() {
-  logfile.print(",");
-  logfile.print(getSpeed(myTrike));
-  // logfile.print(",");
-  // logfile.print(throttlePulse_ms);
-  logfile.print(",");
-  logfile.print(getDriveMode(myTrike));
+void Logger::TxThrottle() {
+  serialLOG.print(",");
+  serialLOG.print(getSpeed(myTrike));
+  // serialLOG.print(",");
+  // serialLOG.print(throttlePulse_ms);
+  serialLOG.print(",");
+  serialLOG.print(getDriveMode(myTrike));
+}
+void Logger::CANThrottle() {
+  unsigned long data;
+  int mode;
+  CAN_FRAME* outCAN = getCAN(myTrike);
+  outCAN->length = 8;
+  outCAN->id = CANlogID++;
+  data = getSpeed(myTrike);
+  outCAN->data.uint32[0] = data;
+  mode = getDriveMode(myTrike);
+  outCAN->data.int16[3] = mode;
+  myTrike.sendCan();
 }
 /******************************************************
 Report state of the brakes
 *******************************************************/ 
 void Logger::HdrBrakes() {
-  logfile.print(",BrakeOn,BrakeVolt");
+  serialLOG.print(",BrakeOn,BrakeVolt");
 }
-void Logger::Brakes()  {
-  logfile.print(",");
-  logfile.print(digitalRead(BRAKE_ON_PIN));
-  logfile.print(",");
-  logfile.print(digitalRead(BRAKE_VOLT_PIN));
+void Logger::TxBrakes()  {
+  serialLOG.print(",");
+  serialLOG.print(digitalRead(BRAKE_ON_PIN));
+  serialLOG.print(",");
+  serialLOG.print(digitalRead(BRAKE_VOLT_PIN));
+}
+void Logger::CANBrakes()  {
+  char brake;
+  CAN_FRAME* outCAN = getCAN(myTrike);
+  outCAN->length = 2;
+  outCAN->id = CANlogID++;
+  brake = digitalRead(BRAKE_ON_PIN);
+  outCAN->data.int8[0] = brake;
+  brake = digitalRead(BRAKE_VOLT_PIN);
+  outCAN->data.int8[1] = brake;
+  myTrike.sendCan();
 }
 /******************************************************
 Terminate the line and indicate the part of loop time used
 *******************************************************/ 
 void Logger::HdrEndLine() {
-  logfile.println(",Utilization");
+  serialLOG.println(",Utilization");
 }
 void Logger::EndLine(uint32_t delayTime) {
   int PerCentBusy = ((LOOP_TIME_MS - delayTime)*100)/LOOP_TIME_MS;
-  logfile.print(",");
-  logfile.println(PerCentBusy);
-  logfile.flush();   // Flush the file to make sure data is written immediately
+  if (logMethod == 3)
+  {
+    CAN_FRAME* outCAN = getCAN(myTrike);
+    outCAN->length = 2;
+    outCAN->id = CANlogID;
+    outCAN->data.int16[0] = PerCentBusy;
+    myTrike.sendCan();   
+    CANlogID = Log_CANID;
+  }
+  else
+  {
+    serialLOG.print(",");
+    serialLOG.println(PerCentBusy);
+    serialLOG.flush();   // Flush the file to make sure data is written immediately
+  }
 }
-

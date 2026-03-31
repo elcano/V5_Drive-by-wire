@@ -39,7 +39,7 @@ void loop() {
   myTrike->updateRC();   // get new desired settings from RC
   //myTrike.receiveCan(); // override desired settings if CAN active
   myTrike->update();   // set throttle, steering and brakes to implement desired settings
-  //myTrike.sendCan();   // send current velocity
+                        // update sends a CAN message with actual velocity
   Log->update();         // write key data to SD
  
   //Timing code

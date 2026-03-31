@@ -20,7 +20,7 @@ public:
   void update();
   void updateRC();
 
-  void sendCan();
+  bool sendCan();
   void receiveCan();
 
 private:
@@ -33,17 +33,17 @@ private:
   unsigned long RCtime[RC_NUM_SIGNALS];
   unsigned long RCtime1;
   long RCMapped[RC_NUM_SIGNALS];
-  static int16_t desired_speed_mmPs;
+  static int16_t desired_speed_cmPs;
   static int16_t desired_brake;
   static int16_t desired_angle_DegX10; 
-  int16_t currentSpeed;
+  int16_t currentSpeed_cmPs;
   int16_t currentBrake;
   int16_t currentAngle_DegX10;
   DriveMode currentDriveMode;
   AutoMode currentAutoMode;
   AutoMode  int2Auto(int);
   int brakeHold; // Hold brakes with 12V 
-  long throttle_mmPs;
+  long throttle_cmPs;
   long steer_DegX10;
 } ;
 
@@ -54,14 +54,24 @@ public:
   ~Logger();
   void update();
   void EndLine(uint32_t delayTime);
+  int logMethod;  // 0 = SD card; 1 = serial; 2 = CAN
+  int CANlogID;
 
 private:
-  void Time();
-  void LogRC();
-  void Desired();
-  void Throttle();
-  void Brakes();
-  void Steer();  
+  void TxTime();
+  void TxLogRC();
+  void TxDesired();
+  void TxThrottle();
+  void TxBrakes();
+  void TxSteer();  
+
+  void CANTime();
+  void CANLogRC();
+  void CANDesired();
+  void CANThrottle();
+  void CANBrakes();
+  void CANSteer();  
+
   void HdrTime();
   void HdrRC();
   void HdrDesired();
@@ -76,8 +86,8 @@ private:
   bool initSD();
   bool openSD();
  
-  int16_t getD_speed_mmPs(Vehicle& v) {
-    return(v.desired_speed_mmPs);
+  int16_t getD_speed_cmPs(Vehicle& v) {
+    return(v.desired_speed_cmPs);
   }
   int16_t getD_brakes(Vehicle& v) {
     return(v.desired_brake);
@@ -86,7 +96,7 @@ private:
     return(v.desired_angle_DegX10);
   }
   int16_t getSpeed(Vehicle& v) {
-    return(v.currentSpeed);
+    return(v.currentSpeed_cmPs);
   }
   int16_t getAngle(Vehicle& v) {
     return(v.currentAngle_DegX10);
@@ -105,6 +115,9 @@ private:
   }
   unsigned long getRCtime1(Vehicle& v) {
     return(v.RCtime1);
+  }
+  CAN_FRAME* getCAN(Vehicle& v) {
+    return (&v.outgoing);
   }
 } ;
 

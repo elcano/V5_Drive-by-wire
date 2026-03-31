@@ -14,6 +14,15 @@
 
 #define MAP(val,dlo,dhi,nlo,nhi) (((val-(dlo))*((nhi)-(nlo)))/((dhi)-(dlo)))
 
+// serial goes to serial monitor; other settings can have another microprocessor do the logging
+// serial1 connects to router on Bridge; 
+// serial2 goes to J9
+// define serialLOG  must be logFile for logMethod 0 or a serial class for logMethod 1
+// #define serialLOG Serial1
+// for SD card
+#define serialLOG logfile
+
+
 // Serial Monitor uses pins 0,1 for RX0,TX0
 // Pins D0-D13 and A0-A5 are reserved for the Motor Shield
 

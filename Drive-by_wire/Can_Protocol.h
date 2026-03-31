@@ -18,10 +18,8 @@
 #define CameraCone_CANID 0x480
 #define CameraRiEdge_CANID 0x4A0
 #define CameraLeEdge_CANID 0x4A1
-#define UNUSED1 0x4C1  //for Goal Position 1
-#define UNUSED2 0x4C2  //for Goal Position 2
-#define UNUSED3 0x4C3  //for Goal Position 3
-#define UNUSED4 0x4C4  //for Goal Position 4
-#define UNUSED5 0x4C5  //for Goal Position 5
-#define UNUSED6 0x4C6  //for Goal Position 6
+// Header for log file
+#define Header_CANID 0x700  
+// ID 0x701-0x71F for logged items
+#define Log_CANID  0x701   
 

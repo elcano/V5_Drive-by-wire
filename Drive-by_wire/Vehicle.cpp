@@ -8,7 +8,7 @@ RC_Controller* Vehicle::RC;
 SpeedController* Vehicle::throttle;
 SteeringController* Vehicle::steer;
 
-int16_t Vehicle::desired_speed_mmPs;
+int16_t Vehicle::desired_speed_cmPs;
 int16_t Vehicle::desired_brake;
 int16_t Vehicle::desired_angle_DegX10; 
 
@@ -22,10 +22,10 @@ Vehicle::Vehicle()
   steer = new SteeringController();
  
   // Intialize default values
-  currentSpeed = 0;
+  currentSpeed_cmPs = 0;
   currentAngle_DegX10 = 0;
   currentBrake = 0;
-  desired_speed_mmPs = 0;
+  desired_speed_cmPs = 0;
   desired_brake = 0;
   desired_angle_DegX10 = 0;
   currentDriveMode = FORWARD_MODE;
@@ -46,17 +46,7 @@ Vehicle::Vehicle()
  ****************************************************************************/
 Vehicle::~Vehicle() {
 }
-/*****************************************************************************
-   Struct for sending current speed and angle to high-level board through CAN
- ****************************************************************************/
-typedef union {
-  struct {
-    uint16_t sspeed;
-    uint16_t brake;
-    uint16_t angle;
-    uint16_t reserved;
-  };
-} speedAngleMessage;
+
 
 /*******************************************************************************************************
    Called after updated desired settings are received from RC and CAN.
@@ -82,12 +72,12 @@ void Vehicle::update() {
     if (tempDspeed == -1)
     {
       desired_brake = 100;  // brake on
-      desired_speed_mmPs = 0;  // stop
+      desired_speed_cmPs = 0;  // stop
     }
     else
     {
       desired_brake = 0;  // brake off
-      desired_speed_mmPs = tempDspeed;
+      desired_speed_cmPs = tempDspeed;
     }
     desired_angle_DegX10 =  RC->getMappedValue(CH1);
    }
@@ -97,15 +87,20 @@ void Vehicle::update() {
     if (tempDspeed = -1)
     {  // E-Stop!
       desired_brake = 100;  // brake on
-      desired_speed_mmPs = 0;  // stop
+      desired_speed_cmPs = 0;  // stop
       currentAutoMode  = ESTOP_RC;
     }
    //recieveCan();  //check for new message  
    }
   //_____________Implement desired values__________________________________________________
 
-  currentSpeed = throttle->update(desired_speed_mmPs, currentDriveMode);   // <- use '->'
-  currentAngle_DegX10 = steer->update(desired_angle_DegX10);      // <- use '->'
+  currentSpeed_cmPs = throttle->update(desired_speed_cmPs, currentDriveMode);  
+  currentAngle_DegX10 = steer->update(desired_angle_DegX10);  
+  outgoing.id= Actual_CANID;  
+  outgoing.length = 6;
+  outgoing.data.int16[0] =  currentSpeed_cmPs;
+  outgoing.data.int16[2] = currentAngle_DegX10;
+  sendCan();   // send current velocity
 }
 //*************************************************************************************
 void Vehicle::updateRC() {
@@ -130,30 +125,11 @@ AutoMode Vehicle::int2Auto( int amode)
 /************************************************************************************
 *  Send current vehicle velocity over CAN
 *************************************************************************************/
-void Vehicle::sendCan() {
-  //build struct to send data to Highlevel through CAN
-  speedAngleMessage MSG;
-  MSG.sspeed = currentSpeed;
-  MSG.brake = currentBrake;
-  MSG.angle = currentAngle_DegX10;
-  MSG.reserved = 0;
-
-  // unknown status (120 - 145)
- 
-//   outgoing.data.int16[0] = MSG.sspeed;
-//   outgoing.data.int16[1] = MSG.brake;
-//   outgoing.data.int16[2] = MSG.angle;
-//   outgoing.data.int16[3] = MSG.reserved;
-//   Can0.sendFrame(outgoing);
-
-  if (DEBUG) {
-    if (Can0.sendFrame(outgoing)) {
-      Serial.println("Sending Message to DUE");
-    } else {
-      Serial.println("Message Failed");
-    }
-  }
-  // Update every LOOP_TIME_MS = 100 ms
+bool Vehicle::sendCan() {
+  if (Can0.sendFrame(outgoing))
+    return (true);
+  else 
+    return (false);
 }
 /*************************************************************************************
    Checks for receipt of a message from CAN bus for new
@@ -177,9 +153,9 @@ void Vehicle::receiveCan() {
     if (DEBUG) {
       Serial.println("RECEIVED CAN MESSAGE FROM HIGH LEVEL WITH ID: " + String(canId, HEX));
     }
-    // SPEED IN mm/s
+    // SPEED IN cm/s
     int16_t low_result = incoming.data.int16[0];
-    desired_speed_mmPs = low_result;
+    desired_speed_cmPs = low_result;
 
     // BRAKE ON/OFF
     int16_t mid_result = incoming.data.int16[1];
@@ -197,7 +173,7 @@ void Vehicle::receiveCan() {
       Serial.println("mapped angle: " + String(desired_angle_DegX10));
     }
   } else if (canId == HiStatus_CANID) {  //High-level Status change (just e-stop for now 4/23/19)
-    desired_speed_mmPs = 0;
+    desired_speed_cmPs = 0;
    // eStop();
   }
 }

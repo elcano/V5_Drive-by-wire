@@ -24,17 +24,17 @@
 class SpeedController {
 private:
   int32_t currentThrottle = 0;
-  float speedCyclometer_mmPs = 0;
+  float speedCyclometer_cmPs = 0;
   float PIDThrottle;
-  float desiredSpeed_mmPs = 0;
+  float desiredSpeed_cmPs = 0;
   PID speedPID;
 
-  static const uint32_t MIN_TICK_TIME_ms = (WHEEL_CIRCUM_MM * 1000) / MAX_SPEED_mmPs;
-  static const uint32_t MAX_TICK_TIME_ms = (WHEEL_CIRCUM_MM * 1000) / MIN_SPEED_mmPs;
+  static const uint32_t MIN_TICK_TIME_ms = (WHEEL_CIRCUM_MM * 100) / MAX_SPEED_cmPs;
+  static const uint32_t MAX_TICK_TIME_ms = (WHEEL_CIRCUM_MM * 100) / MIN_SPEED_cmPs;
 
   static volatile uint32_t tickTime_ms[2];
   uint32_t calcTime_ms[2];
-  int32_t prevSpeed_mmPs;
+  int32_t prevSpeed_cmPs;
 
   void ThrottlePID(int32_t desiredValue);
   int32_t extrapolateSpeed();

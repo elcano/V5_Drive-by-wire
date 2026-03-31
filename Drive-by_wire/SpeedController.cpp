@@ -5,7 +5,7 @@
 volatile uint32_t SpeedController::tickTime_ms[2];
 
 SpeedController::SpeedController()
-  : speedPID(&speedCyclometer_mmPs, &PIDThrottle, &desiredSpeed_mmPs, proportional_throttle, integral_throttle, derivative_throttle, DIRECT) 
+  : speedPID(&speedCyclometer_cmPs, &PIDThrottle, &desiredSpeed_cmPs, proportional_throttle, integral_throttle, derivative_throttle, DIRECT) 
 {
    // Initialize Pins
   pinMode(BRAKE_ON_PIN, OUTPUT);
@@ -21,7 +21,7 @@ SpeedController::SpeedController()
   speedPID.SetMode(AUTOMATIC);
   calcTime_ms[0] = 0;
   calcTime_ms[1] = 0;
-  prevSpeed_mmPs = 0;
+  prevSpeed_cmPs = 0;
 
   attachInterrupt(IRPT_WHEEL, tick, RISING);
   if (DEBUG)
@@ -65,7 +65,7 @@ int32_t SpeedController::update(int32_t dSpeed, DriveMode mode) {
   computeSpeed();
 
   if (DEBUG) {
-    Serial.println("mm Speed: " + String(speedCyclometer_mmPs));
+    Serial.println("cm Speed: " + String(speedCyclometer_cmPs));
     Serial.print("PWM speed: ");
     Serial.println(currentThrottle);
   }
@@ -73,7 +73,7 @@ int32_t SpeedController::update(int32_t dSpeed, DriveMode mode) {
 }
 
 void SpeedController::ThrottlePID(int32_t desiredValue) {
-  // speedPID(&speedCyclometer_mmPs, &PIDThrottle, &desiredSpeed_mmPs
+  // speedPID(&speedCyclometer_cmPs, &PIDThrottle, &desiredSpeed_cmPs
     speedPID.Compute();
     if (PIDThrottle < PID_BRAKE)
     {  // Apply brakes
@@ -96,11 +96,11 @@ int32_t SpeedController::extrapolateSpeed() {
   int32_t y;
   int32_t t = millis();
   //slope calculation
-  y = (speedCyclometer_mmPs - prevSpeed_mmPs) / (calcTime_ms[0] - calcTime_ms[1]);
+  y = (speedCyclometer_cmPs - prevSpeed_cmPs) / (calcTime_ms[0] - calcTime_ms[1]);
   // * change in time
   y *= (t - calcTime_ms[0]);
   // + current speed
-  y += speedCyclometer_mmPs;
+  y += speedCyclometer_cmPs;
 
   if (y < 0)
     y = 0;
@@ -117,31 +117,31 @@ void SpeedController::computeSpeed() {
   tempTick[1] = tickTime_ms[1];
   interrupts();
   if (tempTick[1] == 0)
-    speedCyclometer_mmPs = 0;
+    speedCyclometer_cmPs = 0;
   else if (calcTime_ms[0] == 0) {
-    speedCyclometer_mmPs = WHEEL_CIRCUM_MM * (1000.0 / (tempTick[0] - tempTick[1]));
-    prevSpeed_mmPs = speedCyclometer_mmPs;
+    speedCyclometer_cmPs = WHEEL_CIRCUM_MM * (100.0 / (tempTick[0] - tempTick[1]));
+    prevSpeed_cmPs = speedCyclometer_cmPs;
     calcTime_ms[1] = tempTick[1];
     calcTime_ms[0] = tempTick[0];
   } else {
     if (calcTime_ms[1] == tempTick[1]) {
       uint32_t timeDiff = millis() - calcTime_ms[0];
       if (timeDiff > MAX_TICK_TIME_ms) {
-        speedCyclometer_mmPs = 0;
+        speedCyclometer_cmPs = 0;
         if (timeDiff > (2 * MAX_TICK_TIME_ms)) {
-          prevSpeed_mmPs = 0;
+          prevSpeed_cmPs = 0;
           noInterrupts();
           tickTime_ms[1] = 0;
           interrupts();
         }
-      } else if (prevSpeed_mmPs > speedCyclometer_mmPs) {
-        speedCyclometer_mmPs = extrapolateSpeed();
+      } else if (prevSpeed_cmPs > speedCyclometer_cmPs) {
+        speedCyclometer_cmPs = extrapolateSpeed();
       }
     } else {
       calcTime_ms[1] = calcTime_ms[0];
       calcTime_ms[0] = tempTick[0];
-      prevSpeed_mmPs = speedCyclometer_mmPs;
-      speedCyclometer_mmPs = WHEEL_CIRCUM_MM * (1000.0 / (tempTick[0] - tempTick[1]));
+      prevSpeed_cmPs = speedCyclometer_cmPs;
+      speedCyclometer_cmPs = WHEEL_CIRCUM_MM * (100.0 / (tempTick[0] - tempTick[1]));
     }
   }
 }
