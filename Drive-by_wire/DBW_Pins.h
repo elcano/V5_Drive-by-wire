@@ -12,7 +12,7 @@
 //Version can be 1,3, 4, 5; LLB = Low Level Board = Drive By Wire; 1,2,3 no longer supported.
 #define DBWversion 5
 
-#define MAP(val,dlo,dhi,nlo,nhi) (((val-(dlo))*((nhi)-(nlo)))/((dhi)-(dlo)))
+#define MAP(val,dlo,dhi,nlo,nhi) ((nlo) + (((val-(dlo))*((nhi)-(nlo)))/((dhi)-(dlo))))
 
 // serial goes to serial monitor; other settings can have another microprocessor do the logging
 // serial1 connects to router on Bridge; 
@@ -20,7 +20,8 @@
 // define serialLOG  must be logFile for logMethod 0 or a serial class for logMethod 1
 // #define serialLOG Serial1
 // for SD card
-#define serialLOG logfile
+// #define serialLOG logfile
+#define serialLOG Serial  // use Serial monitor for logging (no SD card)
 
 
 // Serial Monitor uses pins 0,1 for RX0,TX0

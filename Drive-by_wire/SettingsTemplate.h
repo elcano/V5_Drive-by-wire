@@ -19,7 +19,8 @@ Minimum and maximum speed allowed
 #define MAX_SPEED_KmPh 20
 #define KmPh_cmPs  (100000 / 3600) 
 //at 20KMPH this is roughly 5,555 mm/s
-#define MAX_SPEED_cmPs (MAX_SPEED_KmPh * KmPh_cmPs) 
+#define MAX_SPEED_cmPs (MAX_SPEED_KmPh * KmPh_cmPs)
+#define MAX_SPEED_mmPs (MAX_SPEED_cmPs * 10)
 
 // small min speed is interpreted as stopped
 //set as 1% of the maximum speed -> 0.2 KmPh

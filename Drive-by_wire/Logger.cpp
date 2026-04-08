@@ -67,7 +67,7 @@ void Logger::initialize() {
   }
 #endif
   if (logMethod == 0 && !openSD())
-    logMethod == 2;  // use CAN if SD doesn't work
+    logMethod = 2;  // use CAN if SD doesn't work
  
   if (logMethod == 2)
   {  // CAN will open a file and write header information
