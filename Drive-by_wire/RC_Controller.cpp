@@ -66,8 +66,8 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
     rc_data = false;
     RC_switchMode = INITIALIZING;  // unknown
   }
-  op_estop =   digitalRead(OP_ESTOP)? false: true;
-  op_enabled = digitalRead(OP_MODE_PIN) ? false: true;
+  op_estop =   digitalRead(OP_ESTOP)? true: false;
+  op_enabled = digitalRead(OP_MODE_PIN) ? true: false;
 
 // Assume operator has not pressed e-stop button
   switch (oldAutoMode) {
