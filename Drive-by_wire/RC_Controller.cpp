@@ -55,11 +55,13 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
       elapsedTime[CH2] > MIN_RC_PULSE && elapsedTime[CH2] < MAX_RC_PULSE)
   {
     rc_data = true;
-    RC_switchMode = MANUAL_MODE; 
-    if (elapsedTime[CH4] < CH4_MIDLO )
-      RC_switchMode = OPERATOR_MODE;  
-    if (elapsedTime[CH4] > CH4_MIDHI)
-      RC_switchMode = AUTO_RC;
+    RC_switchMode = MANUAL_MODE;
+    if (elapsedTime[CH4] > MIN_RC_PULSE && elapsedTime[CH4] < MAX_RC_PULSE) {
+      if (elapsedTime[CH4] < CH4_MIDLO)
+        RC_switchMode = OPERATOR_MODE;
+      if (elapsedTime[CH4] > CH4_MIDHI)
+        RC_switchMode = AUTO_RC;
+    }
     }
   else
   {

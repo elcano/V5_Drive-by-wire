@@ -54,18 +54,9 @@ Vehicle::~Vehicle() {
  *******************************************************************************************************/
 void Vehicle::update() {
   // ____First, get desired values___________________________________________________
+  // currentAutoMode is set by updateRC() before update() is called.
+  // Do not re-derive it here; int2Auto() expects switch positions, not AutoMode enum values.
   int16_t tempDspeed;
-  int16_t newAutoMode;
-   int16_t newDriveMode;
-  newAutoMode = RC->getMappedValue(CH4);
-  if (currentAutoMode == ESTOP_RC)
-  {  //E-stop happens when RC brake is applied in AUTO_RC
-    if (newAutoMode == OPERATOR_MODE)
-      currentAutoMode = OPERATOR_MODE;   // remove E-stop
-    // if current mode is e-stopped, stay there until switch to operator mode
-  }
-  else
-    currentAutoMode = int2Auto(newAutoMode);
   if (currentAutoMode == MANUAL_MODE)
   {
     tempDspeed = RC->getMappedValue(CH2);
@@ -84,7 +75,7 @@ void Vehicle::update() {
    if (currentAutoMode == AUTO_RC) 
    {
     tempDspeed = RC->getMappedValue(CH2);
-    if (tempDspeed = -1)
+    if (tempDspeed == -1)
     {  // E-Stop!
       desired_brake = 100;  // brake on
       desired_speed_cmPs = 0;  // stop
