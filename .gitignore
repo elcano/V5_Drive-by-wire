@@ -1,0 +1,8 @@
+# Vehicle-specific settings - each vehicle has its own local copy
+Drive-by_wire/Settings.h
+
+# Third-party libraries
+DueTimer/
+MCP48x2/
+can_common/
+due_can/

@@ -15,6 +15,10 @@ RC_Controller::RC_Controller() {
   pinMode(CH4_PIN, INPUT);
   pinMode(CH5_PIN, INPUT);
   pinMode(CH6_PIN, INPUT);
+  pinMode(OP_MODE_PIN, INPUT_PULLUP);  // HIGH when no operator hardware = op_enabled false
+  pinMode(OP_ESTOP, INPUT_PULLUP);     // HIGH when no operator hardware = no estop
+  pinMode(OP_FWD_PIN, INPUT_PULLUP);  // HIGH = reverse, LOW = forward
+  pinMode(OP_DISCNT_PIN, INPUT_PULLUP);  // HIGH when not connected = no disconnect
    for (int i = 0; i < RC_NUM_SIGNALS; i++) {
     RC_Elapsed[i] = 0;
     riseTime[i] = 0;
@@ -68,8 +72,8 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
     rc_data = false;
     RC_switchMode = INITIALIZING;  // unknown
   }
-  op_estop =   digitalRead(OP_ESTOP)? true: false;
-  op_enabled = digitalRead(OP_MODE_PIN) ? true: false;
+  op_estop =   digitalRead(OP_ESTOP)? false: true;
+  op_enabled = digitalRead(OP_MODE_PIN) ? false: true;
 
 // Assume operator has not pressed e-stop button
   switch (oldAutoMode) {
@@ -192,6 +196,7 @@ void RC_Controller::opUpdate() {
       ValuesMapped[CH2] = MAP(throttle,OP_MIDHI,OP_MAX, 0,MAX_SPEED_mmPs);
   
   ValuesMapped[CH3] = digitalRead(OP_FWD_PIN)? HIGH: LOW;
+  driveMode = (ValuesMapped[CH3])? REVERSE_MODE: FORWARD_MODE;
   ValuesMapped[CH5] = digitalRead(OP_DISCNT_PIN)? HIGH: LOW;
 }
 //_______________________________________________________________________________
