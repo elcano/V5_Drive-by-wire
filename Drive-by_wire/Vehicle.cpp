@@ -72,7 +72,22 @@ void Vehicle::update() {
     }
     desired_angle_DegX10 =  RC->getMappedValue(CH1);
    }
-   if (currentAutoMode == AUTO_RC) 
+  if (currentAutoMode == OPERATOR_MODE)
+  {
+    tempDspeed = RC->getMappedValue(CH2);
+    if (tempDspeed == -1)
+    {
+      desired_brake = 100;  // brake on
+      desired_speed_cmPs = 0;  // stop
+    }
+    else
+    {
+      desired_brake = 0;  // brake off
+      desired_speed_cmPs = tempDspeed;
+    }
+    desired_angle_DegX10 = RC->getMappedValue(CH1);
+  }
+   if (currentAutoMode == AUTO_RC)
    {
     tempDspeed = RC->getMappedValue(CH2);
     if (tempDspeed == -1)

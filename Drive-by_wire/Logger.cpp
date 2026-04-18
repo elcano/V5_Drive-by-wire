@@ -11,7 +11,7 @@
 #include "Can_Protocol.h"
 
 tmElements_t tm;
-extern Vehicle myTrike;
+extern Vehicle *myTrike;
 
 /****************************************************************************
  Data Logger
@@ -71,10 +71,10 @@ void Logger::initialize() {
  
   if (logMethod == 2)
   {  // CAN will open a file and write header information
-    CAN_FRAME* outCAN = getCAN(myTrike);
+    CAN_FRAME* outCAN = getCAN(*myTrike);
     outCAN->length = 0;
     outCAN->id = Header_CANID;
-    myTrike.sendCan();
+    myTrike->sendCan();
     CANlogID = Log_CANID;
     Serial.println("CAN log initialized");
   }
@@ -233,11 +233,11 @@ void Logger::TxTime()
 void Logger::CANTime()
 {
   unsigned long time = millis();
-  CAN_FRAME* outCAN = getCAN(myTrike);
+  CAN_FRAME* outCAN = getCAN(*myTrike);
   outCAN->length = 4;
   outCAN->id = CANlogID++;
   outCAN->data.uint32[0] = time;
-  myTrike.sendCan();
+  myTrike->sendCan();
 }
 /******************************************************
 Include what has been commanded by Radio Control
@@ -248,8 +248,8 @@ void Logger::HdrRC() {
   // serialLOG.print(",Map1,Map2,DriveMode,AutoMode,Map5,Map6");
   // What we see
 
-    serialLOG.print(",Ch4,Ch3,Ch6,Ch1Str,Ch2ThB,Ch5");
-    serialLOG.print(",Map5,Map6,MapStr,MapThB,Map3,AutoMode");
+    serialLOG.print(",Ch1Str,Ch2ThB,Ch3,Ch4,Ch5,Ch6");
+    serialLOG.print(",MapStr,MapThB,Map3,AutoMode,Map5,EStopBtn");
 }
 
 void Logger::TxLogRC() {
@@ -258,25 +258,25 @@ void Logger::TxLogRC() {
   long mappd;
   static bool first_time = true; 
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    data = getRCtime(myTrike, i);
+    data = getRCtime(*myTrike, i);
     serialLOG.print(",");
     serialLOG.print(data);
   }
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    mappd = getRCmapped(myTrike, i);
+    mappd = getRCmapped(*myTrike, i);
     serialLOG.print(",");
     serialLOG.print(mappd);
   }
   if (first_time)
   {  // Show on serial monitor
     for (int i = 0; i < RC_NUM_SIGNALS; i++) {
-      data = getRCtime(myTrike, i);
+      data = getRCtime(*myTrike, i);
       Serial.print(data);
       Serial.print(", ");
    }
    Serial.println(" ");
    for (int i = 0; i < RC_NUM_SIGNALS; i++) {
-    mappd = getRCmapped(myTrike, i);
+    mappd = getRCmapped(*myTrike, i);
     Serial.print(mappd);
     Serial.print(", ");
    }
@@ -288,24 +288,24 @@ void Logger::CANLogRC() {
   int i;
   unsigned long data;
   long mappd;
-  CAN_FRAME* outCAN = getCAN(myTrike);
+  CAN_FRAME* outCAN = getCAN(*myTrike);
 
   outCAN->length = 2;  // assumes RC_NUM_SIGNALS is even
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    data = getRCtime(myTrike, i++);
+    data = getRCtime(*myTrike, i++);
     outCAN->data.uint32[0] = data;
-    data = getRCtime(myTrike, i);
+    data = getRCtime(*myTrike, i);
     outCAN->data.uint32[1] = data;
     outCAN->id = CANlogID++;
-    myTrike.sendCan();
+    myTrike->sendCan();
     }
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    mappd = getRCmapped(myTrike, i++);
+    mappd = getRCmapped(*myTrike, i++);
     outCAN->data.int32[0] = mappd;
-    mappd = getRCmapped(myTrike, i);
+    mappd = getRCmapped(*myTrike, i);
     outCAN->data.int32[1] = data;
     outCAN->id = CANlogID++;
-    myTrike.sendCan();
+    myTrike->sendCan();
   }
 }
 /******************************************************
@@ -316,28 +316,28 @@ void Logger::HdrDesired() {
 }
 void Logger::TxDesired() {
   serialLOG.print(",");
-  serialLOG.print( getD_speed_cmPs(myTrike));
+  serialLOG.print( getD_speed_cmPs(*myTrike));
   serialLOG.print(",");
-  serialLOG.print( getD_brakes(myTrike));
+  serialLOG.print( getD_brakes(*myTrike));
   serialLOG.print(",");
-  serialLOG.print( getD_Angle(myTrike));
+  serialLOG.print( getD_Angle(*myTrike));
 }
 void Logger::CANDesired() {
   unsigned long data;
-  CAN_FRAME* outCAN = getCAN(myTrike);
+  CAN_FRAME* outCAN = getCAN(*myTrike);
   outCAN->length = 8;
   outCAN->id = CANlogID++;
-  data = getD_speed_cmPs(myTrike);
+  data = getD_speed_cmPs(*myTrike);
   outCAN->data.uint32[0] = data;
-  data = getD_brakes(myTrike);
+  data = getD_brakes(*myTrike);
   outCAN->data.uint32[1] = data;
-  myTrike.sendCan();
+  myTrike->sendCan();
 
   outCAN->length = 4;
   outCAN->id = CANlogID++;
-  data = getD_Angle(myTrike);
+  data = getD_Angle(*myTrike);
   outCAN->data.uint32[0] = data;
-  myTrike.sendCan();
+  myTrike->sendCan();
 }
 /******************************************************
 Report sensors and actuators for steering
@@ -348,7 +348,7 @@ void Logger::HdrSteer() {
 
 void Logger::TxSteer() {
   serialLOG.print(",");
-  serialLOG.print(getAngle(myTrike));
+  serialLOG.print(getAngle(*myTrike));
   serialLOG.print(",");
   serialLOG.print(digitalRead(RIGHT_TURN_PIN));
   serialLOG.print(",");
@@ -358,16 +358,16 @@ void Logger::CANSteer() {
   
   unsigned long data;
   int turn;
-  CAN_FRAME* outCAN = getCAN(myTrike);
+  CAN_FRAME* outCAN = getCAN(*myTrike);
   outCAN->length = 8;
   outCAN->id = CANlogID++;
-   data = getAngle(myTrike);
+   data = getAngle(*myTrike);
   outCAN->data.uint32[0] = data;
   turn = digitalRead(RIGHT_TURN_PIN);
   outCAN->data.int16[2] = turn;
   turn = digitalRead(LEFT_TURN_PIN);
   outCAN->data.int16[3] = turn;
-  myTrike.sendCan();
+  myTrike->sendCan();
 } 
 /******************************************************
 Report sensors and actuators for propulsion
@@ -377,23 +377,23 @@ void Logger::HdrThrottle() {
 }
 void Logger::TxThrottle() {
   serialLOG.print(",");
-  serialLOG.print(getSpeed(myTrike));
+  serialLOG.print(getSpeed(*myTrike));
   // serialLOG.print(",");
   // serialLOG.print(throttlePulse_ms);
   serialLOG.print(",");
-  serialLOG.print(getDriveMode(myTrike));
+  serialLOG.print(getDriveMode(*myTrike));
 }
 void Logger::CANThrottle() {
   unsigned long data;
   int mode;
-  CAN_FRAME* outCAN = getCAN(myTrike);
+  CAN_FRAME* outCAN = getCAN(*myTrike);
   outCAN->length = 8;
   outCAN->id = CANlogID++;
-  data = getSpeed(myTrike);
+  data = getSpeed(*myTrike);
   outCAN->data.uint32[0] = data;
-  mode = getDriveMode(myTrike);
+  mode = getDriveMode(*myTrike);
   outCAN->data.int16[3] = mode;
-  myTrike.sendCan();
+  myTrike->sendCan();
 }
 /******************************************************
 Report state of the brakes
@@ -409,14 +409,14 @@ void Logger::TxBrakes()  {
 }
 void Logger::CANBrakes()  {
   char brake;
-  CAN_FRAME* outCAN = getCAN(myTrike);
+  CAN_FRAME* outCAN = getCAN(*myTrike);
   outCAN->length = 2;
   outCAN->id = CANlogID++;
   brake = digitalRead(BRAKE_ON_PIN);
   outCAN->data.int8[0] = brake;
   brake = digitalRead(BRAKE_VOLT_PIN);
   outCAN->data.int8[1] = brake;
-  myTrike.sendCan();
+  myTrike->sendCan();
 }
 /******************************************************
 Terminate the line and indicate the part of loop time used
@@ -428,11 +428,11 @@ void Logger::EndLine(uint32_t delayTime) {
   int PerCentBusy = ((LOOP_TIME_MS - delayTime)*100)/LOOP_TIME_MS;
   if (logMethod == 3)
   {
-    CAN_FRAME* outCAN = getCAN(myTrike);
+    CAN_FRAME* outCAN = getCAN(*myTrike);
     outCAN->length = 2;
     outCAN->id = CANlogID;
     outCAN->data.int16[0] = PerCentBusy;
-    myTrike.sendCan();   
+    myTrike->sendCan();   
     CANlogID = Log_CANID;
   }
   else
