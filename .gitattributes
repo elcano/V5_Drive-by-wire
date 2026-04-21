@@ -1,0 +1,11 @@
+# Normalize line endings to LF in the repository
+* text=auto eol=lf
+
+# Arduino/C++ source files
+*.ino text eol=lf
+*.cpp text eol=lf
+*.h   text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
