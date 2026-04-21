@@ -30,6 +30,7 @@ Vehicle::Vehicle()
   desired_angle_DegX10 = 0;
   currentDriveMode = FORWARD_MODE;
   currentAutoMode = INITIALIZING;
+  canActive = false;
 
    if (!Can0.begin(CAN_BPS_500K))  // initialize CAN with 500kbps baud rate
   {
@@ -37,7 +38,8 @@ Vehicle::Vehicle()
   } else {
      Serial.println("Can0 init failed");
   }
- 
+  Can0.watchFor(HiStatus_CANID);   // listen for 0x100 (desired speed)
+  Can0.watchFor(HiDrive_CANID);    // listen for 0x350 (desired angle)
   Serial.println("Vehicle constructor finished.");
 }
 
@@ -57,7 +59,7 @@ void Vehicle::update() {
   // currentAutoMode is set by updateRC() before update() is called.
   // Do not re-derive it here; int2Auto() expects switch positions, not AutoMode enum values.
   int16_t tempDspeed;
-  if (currentAutoMode == MANUAL_MODE)
+  if (currentAutoMode == MANUAL_MODE && !canActive)
   {
     tempDspeed = RC->getMappedValue(CH2);
     if (tempDspeed == -1)
@@ -100,11 +102,11 @@ void Vehicle::update() {
    }
   //_____________Implement desired values__________________________________________________
 
-  currentSpeed_cmPs = throttle->update(desired_speed_cmPs, currentDriveMode);  
-  currentAngle_DegX10 = steer->update(desired_angle_DegX10);  
-  outgoing.id= Actual_CANID;  
+  currentSpeed_cmPs = throttle->update(desired_speed_cmPs, currentDriveMode);
+  currentAngle_DegX10 = steer->update(desired_angle_DegX10);
+  outgoing.id = Actual_CANID;
   outgoing.length = 6;
-  outgoing.data.int16[0] =  currentSpeed_cmPs;
+  outgoing.data.int16[0] = currentSpeed_cmPs;
   outgoing.data.int16[2] = currentAngle_DegX10;
   sendCan();   // send current velocity
 }
@@ -141,45 +143,16 @@ bool Vehicle::sendCan() {
    Checks for receipt of a message from CAN bus for new
    desired speed/angle/brake instructions from high-level board
  ************************************************************************************/
-void Vehicle::receiveCan() {  
-  //need to ADD ALL the other CAN IDs possible (RC instructions etc. 4-23-19)
-  noInterrupts();  // why?
-  unsigned char len = 0;
-  unsigned char buf[8];
-  unsigned int canId = 0;
-
-// CAN message receipt for system using Arduino Due
-  Can0.watchForRange(Actual_CANID, HiStatus_CANID);  //filter for high level communication
-  while (Can0.available() > 0) {                     // check if CAN message available
-    Can0.read(incoming);                             // reading data from CAN message
-    canId = incoming.id;
-  }
-  interrupts();
-  if (canId == HiDrive_CANID) {  // the drive ID receive from high level
-    if (DEBUG) {
-      Serial.println("RECEIVED CAN MESSAGE FROM HIGH LEVEL WITH ID: " + String(canId, HEX));
+void Vehicle::receiveCan() {
+  while (Can0.available() > 0) {
+    Can0.read(incoming);
+    if (incoming.id == HiStatus_CANID) {
+      desired_speed_cmPs = incoming.data.int16[0];
+      desired_brake = incoming.data.int16[1];
+      canActive = true;
+    } else if (incoming.id == HiDrive_CANID) {
+      desired_angle_DegX10 = incoming.data.int16[0];
+      canActive = true;
     }
-    // SPEED IN cm/s
-    int16_t low_result = incoming.data.int16[0];
-    desired_speed_cmPs = low_result;
-
-    // BRAKE ON/OFF
-    int16_t mid_result = incoming.data.int16[1];
-    desired_brake = mid_result;
-  
-    // WHEEL ANGLE
-    int16_t high_result = incoming.data.int16[2];
-    desired_angle_DegX10 = high_result;
-
-    if (DEBUG) {
-      Serial.print("CAN Speed: " + String(low_result, DEC));
-      Serial.print(", CAN Brake: " + String(mid_result, DEC));
-      Serial.print(",  CAN Angle: ");
-      Serial.println(high_result, DEC);
-      Serial.println("mapped angle: " + String(desired_angle_DegX10));
-    }
-  } else if (canId == HiStatus_CANID) {  //High-level Status change (just e-stop for now 4/23/19)
-    desired_speed_cmPs = 0;
-   // eStop();
   }
 }

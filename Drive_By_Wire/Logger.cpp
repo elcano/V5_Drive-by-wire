@@ -35,7 +35,7 @@ extern Vehicle *myTrike;
 
    Constructor
  ****************************************************************************/
-Logger::Logger() 
+Logger::Logger()
 {
   initialize();
   Serial.println("Logger constructor finished.");
@@ -51,15 +51,16 @@ Logger::~Logger() {
 Initialize RTC and SD Card
 ********************************/ 
 void Logger::initialize() {
+#ifdef HAS_RTC
   initRTC();
-
+#endif
   logMethod = serialLOG==logfile? 0:1;  // set 0 for SD, 1 for serial, 2 for CAN
   // logMethod = 2;  // CAN
   if (logMethod == 0 && !initSD())
-  {   // SD Card failed");
+  {   // SD Card failed
     logMethod = 2;   // USE CAN
   }
- 
+
  #if (serialLOG != logfile)
   if (logMethod == 1 && serialLOG != Serial)
   {  // if using serial monitor, it has already been started
@@ -68,7 +69,7 @@ void Logger::initialize() {
 #endif
   if (logMethod == 0 && !openSD())
     logMethod = 2;  // use CAN if SD doesn't work
- 
+
   if (logMethod == 2)
   {  // CAN will open a file and write header information
     CAN_FRAME* outCAN = getCAN(*myTrike);
@@ -80,12 +81,12 @@ void Logger::initialize() {
   }
   else  // SD or serial
   {
-    //Write CSV Header 
+    //Write CSV Header
     serialLOG.print(VEHICLE_NAME);
     serialLOG.print(",");
     serialLOG.print(timeString);
     serialLOG.print(",");
-    serialLOG.println(dateString);   
+    serialLOG.println(dateString);
     // Write snd line of header
     HdrTime();
     HdrRC();
@@ -207,7 +208,7 @@ void Logger::update(){
     TxDesired();
     TxThrottle();
     TxBrakes();
-    TxSteer();  
+    TxSteer();
   }
   else
   {
@@ -268,19 +269,21 @@ void Logger::TxLogRC() {
     serialLOG.print(mappd);
   }
   if (first_time)
-  {  // Show on serial monitor
+  {  // Show on serial monitor. Skipped on Bridge board: Serial (pins 0/1) connects to Router Arduino and blocks if not reading
+    #ifndef USE_NATIVE_USB
     for (int i = 0; i < RC_NUM_SIGNALS; i++) {
       data = getRCtime(*myTrike, i);
       Serial.print(data);
       Serial.print(", ");
-   }
-   Serial.println(" ");
-   for (int i = 0; i < RC_NUM_SIGNALS; i++) {
-    mappd = getRCmapped(*myTrike, i);
-    Serial.print(mappd);
-    Serial.print(", ");
-   }
+    }
     Serial.println(" ");
+    for (int i = 0; i < RC_NUM_SIGNALS; i++) {
+      mappd = getRCmapped(*myTrike, i);
+      Serial.print(mappd);
+      Serial.print(", ");
+    }
+    Serial.println(" ");
+    #endif
     first_time = false;
   }
 }

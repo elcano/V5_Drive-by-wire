@@ -19,7 +19,12 @@ void setup() {
   digitalWrite(RED_LED_PIN,HIGH);
   digitalWrite(GREEN_LED_PIN,HIGH);
   digitalWrite(BLUE_LED_PIN,HIGH);
+#ifdef USE_NATIVE_USB
+  SerialUSB.begin(baud);
+  while(!SerialUSB);
+#else
   Serial.begin(baud);
+#endif
   myTrike = new Vehicle();
   Log = new Logger();
 }
@@ -35,18 +40,17 @@ void loop() {
   // The batteries won't last that long without recharging.
   // Don't worry about clock rollover.
  // if (end_time < timeStart_ms) {  // clock rollover}
- 
-  myTrike->updateRC();   // get new desired settings from RC
-  //myTrike.receiveCan(); // override desired settings if CAN active
-  myTrike->update();   // set throttle, steering and brakes to implement desired settings
+
+  myTrike->updateRC();      // get new desired settings from RC
+  myTrike->receiveCan();    // override desired settings if CAN active
+  myTrike->update();        // set throttle, steering and brakes to implement desired settings
                         // update sends a CAN message with actual velocity
   Log->update();         // write key data to SD
- 
   //Timing code
-   delayTime = endTime - millis() - offsetTime;
+  delayTime = endTime - millis() - offsetTime;
    Log->EndLine(delayTime);     // Finalize SD line by giving utilization
-   if (delayTime <= 0) delayTime = 0;
-   if (delayTime >= LOOP_TIME_MS) delayTime = LOOP_TIME_MS;
-   delay(delayTime);
+  if (delayTime <= 0) delayTime = 0;
+  if (delayTime >= LOOP_TIME_MS) delayTime = LOOP_TIME_MS;
+  delay(delayTime);
 
 }

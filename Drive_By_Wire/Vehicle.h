@@ -42,7 +42,8 @@ private:
   DriveMode currentDriveMode;
   AutoMode currentAutoMode;
   AutoMode  int2Auto(int);
-  int brakeHold; // Hold brakes with 12V 
+  bool canActive;  // true when CAN commands are being received
+  int brakeHold; // Hold brakes with 12V
   long throttle_cmPs;
   long steer_DegX10;
 } ;

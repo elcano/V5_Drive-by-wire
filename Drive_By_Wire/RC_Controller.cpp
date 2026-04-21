@@ -77,9 +77,10 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
 
 // Assume operator has not pressed e-stop button
   switch (oldAutoMode) {
-    case INITIALIZING:  
+    case INITIALIZING:
       if (rc_data && RC_switchMode==MANUAL_MODE)  newAutoMode = MANUAL_MODE;
       else if (op_enabled)                        newAutoMode = OPERATOR_MODE;
+      else if (!rc_data && !op_enabled)           newAutoMode = AUTO_RC;  // no RC/operator: CAN control
       break;
     case MANUAL_MODE:
       if (!rc_data)                               newAutoMode = INITIALIZING;

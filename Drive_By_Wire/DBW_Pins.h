@@ -21,7 +21,7 @@
 // #define serialLOG Serial1
 // for SD card
 // #define serialLOG logfile
-#define serialLOG Serial  // use Serial monitor for logging (no SD card)
+// serialLOG is defined in Settings.h — use SerialUSB for Bridge board, Serial for standalone Due
 
 
 // Serial Monitor uses pins 0,1 for RX0,TX0
