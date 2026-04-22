@@ -109,6 +109,16 @@ void Vehicle::update() {
   outgoing.data.int16[0] = currentSpeed_cmPs;
   outgoing.data.int16[2] = currentAngle_DegX10;
   sendCan();   // send current velocity
+
+  // 0x200 LowStatus - status-bit mirror so Nav can see what mode DBW is in
+  outgoing.id = LowStatus_CANID;
+  outgoing.length = 1;
+  uint8_t status = 0;
+  if (currentAutoMode == ESTOP_RC || currentAutoMode == ESTOP_OP || currentAutoMode == ESTOP_BTN) status |= 0x80;
+  if (currentAutoMode == AUTO_RC || currentAutoMode == AUTO_OP) status |= 0x40;
+  if (currentDriveMode == REVERSE_MODE) status |= 0x04;
+  outgoing.data.uint8[0] = status;
+  sendCan();
 }
 //*************************************************************************************
 void Vehicle::updateRC() {
@@ -142,16 +152,27 @@ bool Vehicle::sendCan() {
 /*************************************************************************************
    Checks for receipt of a message from CAN bus for new
    desired speed/angle/brake instructions from high-level board
+   Protocol (per elcanoproject.org/wiki/Communication):
+     0x350 HiDrive  - int16[0]=speed_cmPs, int16[1]=brake, int16[2]=angle_DegX10
+     0x100 HiStatus - byte0 bits: 0x80=E-stop, 0x40=autonomous, 0x04=reverse
  ************************************************************************************/
 void Vehicle::receiveCan() {
   while (Can0.available() > 0) {
     Can0.read(incoming);
-    if (incoming.id == HiStatus_CANID) {
+    if (incoming.id == HiDrive_CANID) {
       desired_speed_cmPs = incoming.data.int16[0];
       desired_brake = incoming.data.int16[1];
+      desired_angle_DegX10 = incoming.data.int16[2];
       canActive = true;
-    } else if (incoming.id == HiDrive_CANID) {
-      desired_angle_DegX10 = incoming.data.int16[0];
+    } else if (incoming.id == HiStatus_CANID) {
+      uint8_t status = incoming.data.uint8[0];
+      if (status & 0x80) {
+        currentAutoMode = ESTOP_RC;                    // 0x80 E-stop
+      } else {
+        currentAutoMode = (status & 0x40) ? AUTO_RC    // 0x40 set  -> autonomous
+                                          : MANUAL_MODE;  // 0x40 clear -> manual
+      }
+      currentDriveMode = (status & 0x04) ? REVERSE_MODE : FORWARD_MODE;
       canActive = true;
     }
   }
