@@ -1,5 +1,7 @@
 # Vehicle-specific settings - each vehicle has its own local copy
 Drive-by_wire/Settings.h
+Drive_By_Wire/Settings.h
+Drive_By_Wire/Settings.h
 
 # Third-party libraries
 DueTimer/

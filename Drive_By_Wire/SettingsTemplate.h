@@ -151,3 +151,18 @@ Operator: analog in on 0 -1023 scale
 #define OP_MIDHI  523
 #define OP_MAX    1023
 
+/*=======================================================================
+Serial logging output — choose one in your local Settings.h:
+  Serial    = standalone Arduino Due (default)
+  Serial1   = Bridge board: DBW Serial1 connects to Router Serial2
+  SerialUSB = Bridge board workaround: Native USB to PC
+  logfile   = SD card (set logMethod=0 in Logger)
+*/
+#define serialLOG Serial
+//#define USE_NATIVE_USB  // uncomment for Bridge board (enables SerialUSB.begin + wait)
+
+/*=======================================================================
+Hardware options — uncomment if your vehicle has this hardware
+*/
+#define HAS_RTC  // comment out if DS1307 RTC is not connected
+
