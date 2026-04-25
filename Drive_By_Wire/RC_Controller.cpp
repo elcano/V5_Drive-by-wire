@@ -203,11 +203,10 @@ void RC_Controller::opUpdate() {
 //_______________________________________________________________________________
 long RC_Controller::getMappedValue(int channel) {
   // for some unknown reason, this returns chaneels 4,5,6,1,2,3
-  return (ValuesMapped[channel]);
-  // if (channel > 2)
-  //   return (ValuesMapped[channel-3]);
-  // else
-  //   return (ValuesMapped[channel+3]);
+     if (channel > 2)
+       return (ValuesMapped[channel-3]);
+     else
+       return (ValuesMapped[channel+3]);
 }
 unsigned long RC_Controller::getEtime(int channel) {
   return (elapsedTime[channel]);
