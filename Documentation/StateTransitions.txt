@@ -15,6 +15,7 @@ NO_CAN: No recent data from CAN
 OP_DATA: Switch change on operator panel	
 NO_OP: No operator action for too long
 OP_MAN: Operator switch set for manual	
+AUTO_ESTP: Auto mode requests E-stop
 OP_AUTO: Operator switch set for auto
 OP_BRAKE: Operator applies brake
 OP_ESTP: Operator pushes E-stop button	
