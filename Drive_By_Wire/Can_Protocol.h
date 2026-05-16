@@ -23,8 +23,20 @@
 // Vehicle / waypoint positions (E/N cm, int32)
 #define VehiclePosition_CANID 0x4C0
 // 0x4C1-0x4DF reserved for individual waypoint positions
-// Header for log file
-#define Header_CANID 0x700  
-// ID 0x701-0x71F for logged items
-#define Log_CANID  0x701   
+
+// ---- Log message IDs (0x700-0x70A per wiki) ----
+// See https://www.elcanoproject.org/wiki/Communication
+#define Header_CANID         0x700   // session start; per-session bitmap planned
+#define LogTime_CANID        0x701   // uint32 ms (LE)
+#define LogRC_CANID          0x702   // RC channel pulse widths in microseconds
+#define LogOp_CANID          0x703   // operator panel: joystick + switches + commanded
+#define LogAuto_CANID        0x704   // what DBW received from Nav (mirrors 0x350 + 0x100)
+#define LogDesired_CANID     0x705   // desired speed/brake/mode/angle from active source
+#define LogThrottle_CANID    0x706   // actual speed, throttle PWM, drive mode
+#define LogBrakes_CANID      0x707   // brake on, brake voltage
+#define LogSteer_CANID       0x708   // actual angle, R/L column sensors
+#define LogPosition_CANID    0x709   // vehicle position (E/N cm); emitted by Nav, not DBW
+#define LogFinalize_CANID    0x70A   // end-of-row marker, CPU utilization %
+// 0x70B-0x71F reserved for future log expansion
+#define Log_CANID            LogTime_CANID  // backward-compat alias
 

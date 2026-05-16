@@ -43,6 +43,13 @@ private:
   AutoMode currentAutoMode;
   AutoMode  int2Auto(int);
   bool canActive;  // true when CAN commands are being received
+  // Buffered last values received from Nav (for 0x704 Log_auto emit).
+  // The 0x350 mode byte is informational; DBW arbitrates its own state.
+  int16_t last_nav_speed_cmPs;
+  uint8_t last_nav_brake;
+  uint8_t last_nav_mode;
+  int16_t last_nav_angle_DegX10;
+  uint8_t last_nav_status;
   int brakeHold; // Hold brakes with 12V
   long throttle_cmPs;
   long steer_DegX10;
@@ -55,8 +62,9 @@ public:
   ~Logger();
   void update();
   void EndLine(uint32_t delayTime);
-  int logMethod;  // 0 = SD card; 1 = serial; 2 = CAN
-  int CANlogID;
+  // Sink state. CAN log emit is always on; SD and serial are optional additions.
+  // logMethod retained for back-compat with Tx* path: 0 = SD, 1 = serial, 2 = neither.
+  int logMethod;
 
 private:
   void TxTime();
@@ -64,14 +72,19 @@ private:
   void TxDesired();
   void TxThrottle();
   void TxBrakes();
-  void TxSteer();  
+  void TxSteer();
 
-  void CANTime();
-  void CANLogRC();
-  void CANDesired();
-  void CANThrottle();
-  void CANBrakes();
-  void CANSteer();  
+  // CAN log emit — one frame per method, fixed wiki IDs (0x701-0x70A).
+  void CANLogTime();      // 0x701
+  void CANLogRC();        // 0x702
+  void CANLogOp();        // 0x703
+  void CANLogAuto();      // 0x704
+  void CANLogDesired();   // 0x705
+  void CANLogThrottle();  // 0x706
+  void CANLogBrakes();    // 0x707
+  void CANLogSteer();     // 0x708
+  // 0x709 LogPosition is Nav-sourced; not emitted by DBW.
+  void CANLogFinalize(int PerCentBusy);  // 0x70A — called from EndLine
 
   void HdrTime();
   void HdrRC();
@@ -120,6 +133,13 @@ private:
   CAN_FRAME* getCAN(Vehicle& v) {
     return (&v.outgoing);
   }
+  // Accessors for 0x704 Log_auto: last values received from Nav over CAN.
+  int16_t getNavSpeed(Vehicle& v)  { return v.last_nav_speed_cmPs; }
+  uint8_t getNavBrake(Vehicle& v)  { return v.last_nav_brake; }
+  uint8_t getNavMode(Vehicle& v)   { return v.last_nav_mode; }
+  int16_t getNavAngle(Vehicle& v)  { return v.last_nav_angle_DegX10; }
+  uint8_t getNavStatus(Vehicle& v) { return v.last_nav_status; }
+  bool    getCanActive(Vehicle& v) { return v.canActive; }
 } ;
 
   
