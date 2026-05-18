@@ -38,7 +38,9 @@ extern Vehicle *myTrike;
 Logger::Logger()
 {
   initialize();
+#ifndef USE_NATIVE_USB
   Serial.println("Logger constructor finished.");
+#endif
 }
 
 /*****************************************************************************
@@ -54,40 +56,38 @@ void Logger::initialize() {
 #ifdef HAS_RTC
   initRTC();
 #endif
-  logMethod = serialLOG==logfile? 0:1;  // set 0 for SD, 1 for serial, 2 for CAN
-  // logMethod = 2;  // CAN
-  if (logMethod == 0 && !initSD())
-  {   // SD Card failed
-    logMethod = 2;   // USE CAN
-  }
-
- #if (serialLOG != logfile)
-  if (logMethod == 1 && serialLOG != Serial)
-  {  // if using serial monitor, it has already been started
-     serialLOG.begin(115200);
-  }
+  // Decide whether an SD or serial sink is available. CAN log emit is unconditional below.
+  // serialLOG (in Settings.h) is either `logfile` (SD) or a Serial port.
+  logMethod = (serialLOG == logfile) ? 0 : 1;
+  if (logMethod == 0) {
+    if (!initSD() || !openSD()) {
+      logMethod = 2;  // SD failed — no local sink, CAN emit only
+    }
+  } else {
+#if (serialLOG != logfile)
+    if (serialLOG != Serial) {  // Serial monitor was begun in setup()
+      serialLOG.begin(115200);
+    }
 #endif
-  if (logMethod == 0 && !openSD())
-    logMethod = 2;  // use CAN if SD doesn't work
-
-  if (logMethod == 2)
-  {  // CAN will open a file and write header information
-    CAN_FRAME* outCAN = getCAN(*myTrike);
-    outCAN->length = 0;
-    outCAN->id = Header_CANID;
-    myTrike->sendCan();
-    CANlogID = Log_CANID;
-    Serial.println("CAN log initialized");
   }
-  else  // SD or serial
-  {
-    //Write CSV Header
+
+  // CAN: always emit session header so any listener (Sensor Hub Due, debug laptop, etc.)
+  // sees a new session on the bus regardless of local SD/serial availability.
+  CAN_FRAME* outCAN = getCAN(*myTrike);
+  outCAN->id = Header_CANID;
+  outCAN->length = 0;
+  myTrike->sendCan();
+#ifndef USE_NATIVE_USB
+  Serial.println("CAN log session opened (0x700).");
+#endif
+
+  // SD/serial: write CSV header only if that sink is available.
+  if (logMethod != 2) {
     serialLOG.print(VEHICLE_NAME);
     serialLOG.print(",");
     serialLOG.print(timeString);
     serialLOG.print(",");
     serialLOG.println(dateString);
-    // Write snd line of header
     HdrTime();
     HdrRC();
     HdrDesired();
@@ -95,12 +95,14 @@ void Logger::initialize() {
     HdrBrakes();
     HdrSteer();
     HdrEndLine();
-    if (logMethod == 0)
-      Serial.println("SD log initialized.");
-    else
-      Serial.println("Serial Log initialized.");
+#ifndef USE_NATIVE_USB
+    Serial.println(logMethod == 0 ? "SD log initialized." : "Serial log initialized.");
+#endif
+  } else {
+#ifndef USE_NATIVE_USB
+    Serial.println("No SD/serial sink — CAN log emit only.");
+#endif
   }
-  
 }
 /*******************************
 Initialize real time clock
@@ -197,12 +199,24 @@ bool Logger::openSD()
   return (true);
 }
 /****************************************
-Write a new set of data to the SD card or serial or CAN
-****************************************/ 
-void Logger::update(){
- 
-  if (logMethod != 2)
-  {
+Write a new set of data to all available sinks.
+  - CAN log emit is unconditional (every loop tick puts 0x701-0x70A on the bus).
+  - SD/serial write only if logMethod != 2 (i.e. that sink was successfully initialized).
+****************************************/
+void Logger::update() {
+  // CAN log emit — always on. Sensor Hub Due (and any other listener) picks up from the bus.
+  CANLogTime();      // 0x701
+  CANLogRC();        // 0x702
+  CANLogOp();        // 0x703
+  CANLogAuto();      // 0x704
+  CANLogDesired();   // 0x705
+  CANLogThrottle();  // 0x706
+  CANLogBrakes();    // 0x707
+  CANLogSteer();     // 0x708
+  // 0x709 LogPosition is emitted by Nav (not DBW) — left for the Sensor Hub log row.
+
+  // SD/serial: write a CSV row if that sink is available.
+  if (logMethod != 2) {
     TxTime();
     TxLogRC();
     TxDesired();
@@ -210,16 +224,7 @@ void Logger::update(){
     TxBrakes();
     TxSteer();
   }
-  else
-  {
-    CANTime();
-    CANLogRC();
-    CANDesired();
-    CANThrottle();
-    CANBrakes();
-    CANSteer();  
- }
-  // Need to finish with EndLine();
+  // Caller must finish the row with EndLine() (emits 0x70A and terminates CSV line).
 }
 /******************************************************
 Line starts with a relative time stamp in milliseconds
@@ -231,13 +236,12 @@ void Logger::TxTime()
 {
    serialLOG.print(millis());
 }
-void Logger::CANTime()
-{
-  unsigned long time = millis();
+// 0x701 LogTime — 4 bytes uint32 LE: relative time in milliseconds.
+void Logger::CANLogTime() {
   CAN_FRAME* outCAN = getCAN(*myTrike);
+  outCAN->id = LogTime_CANID;
   outCAN->length = 4;
-  outCAN->id = CANlogID++;
-  outCAN->data.uint32[0] = time;
+  outCAN->data.uint32[0] = millis();
   myTrike->sendCan();
 }
 /******************************************************
@@ -287,29 +291,17 @@ void Logger::TxLogRC() {
     first_time = false;
   }
 }
+// 0x702 LogRC — 8 bytes: 4 RC channel pulse widths as int16 LE microseconds.
+// RC has 6 channels; emit the 4 most useful (CH1 steer, CH2 throttle/brake, CH3 fwd/rev, CH4 mode).
 void Logger::CANLogRC() {
-  int i;
-  unsigned long data;
-  long mappd;
   CAN_FRAME* outCAN = getCAN(*myTrike);
-
-  outCAN->length = 2;  // assumes RC_NUM_SIGNALS is even
-  for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    data = getRCtime(*myTrike, i++);
-    outCAN->data.uint32[0] = data;
-    data = getRCtime(*myTrike, i);
-    outCAN->data.uint32[1] = data;
-    outCAN->id = CANlogID++;
-    myTrike->sendCan();
-    }
-  for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    mappd = getRCmapped(*myTrike, i++);
-    outCAN->data.int32[0] = mappd;
-    mappd = getRCmapped(*myTrike, i);
-    outCAN->data.int32[1] = data;
-    outCAN->id = CANlogID++;
-    myTrike->sendCan();
-  }
+  outCAN->id = LogRC_CANID;
+  outCAN->length = 8;
+  outCAN->data.int16[0] = (int16_t)getRCtime(*myTrike, CH1);
+  outCAN->data.int16[1] = (int16_t)getRCtime(*myTrike, CH2);
+  outCAN->data.int16[2] = (int16_t)getRCtime(*myTrike, CH3);
+  outCAN->data.int16[3] = (int16_t)getRCtime(*myTrike, CH4);
+  myTrike->sendCan();
 }
 /******************************************************
 Include wthe goals, either from RC or CAN
@@ -325,21 +317,19 @@ void Logger::TxDesired() {
   serialLOG.print(",");
   serialLOG.print( getD_Angle(*myTrike));
 }
-void Logger::CANDesired() {
-  unsigned long data;
+// 0x705 LogDesired — 6 bytes: the active source's commands (same shape as 0x350).
+//   bytes 0-1: speed int16 LE (cm/s)
+//   byte  2:   brake uint8 (wiki: 0=off, 1=hold, 2=on)
+//   byte  3:   mode  uint8 (DBW's current AutoMode, 0-7 — matches wiki mode table)
+//   bytes 4-5: steer angle int16 LE (deg x 10)
+void Logger::CANLogDesired() {
   CAN_FRAME* outCAN = getCAN(*myTrike);
-  outCAN->length = 8;
-  outCAN->id = CANlogID++;
-  data = getD_speed_cmPs(*myTrike);
-  outCAN->data.uint32[0] = data;
-  data = getD_brakes(*myTrike);
-  outCAN->data.uint32[1] = data;
-  myTrike->sendCan();
-
-  outCAN->length = 4;
-  outCAN->id = CANlogID++;
-  data = getD_Angle(*myTrike);
-  outCAN->data.uint32[0] = data;
+  outCAN->id = LogDesired_CANID;
+  outCAN->length = 6;
+  outCAN->data.int16[0] = getD_speed_cmPs(*myTrike);
+  outCAN->data.uint8[2] = (uint8_t)getD_brakes(*myTrike);
+  outCAN->data.uint8[3] = (uint8_t)getAutoMode(*myTrike);
+  outCAN->data.int16[2] = getD_Angle(*myTrike);
   myTrike->sendCan();
 }
 /******************************************************
@@ -357,21 +347,19 @@ void Logger::TxSteer() {
   serialLOG.print(",");
   serialLOG.print(digitalRead(LEFT_TURN_PIN));
 } 
-void Logger::CANSteer() {
-  
-  unsigned long data;
-  int turn;
+// 0x708 LogSteer — 6 bytes: actual steer angle + L/R column sensor analog readings.
+//   bytes 0-1: actual_angle int16 LE (deg x 10)
+//   bytes 2-3: R column sensor int16 (raw analogRead, 0-1023)
+//   bytes 4-5: L column sensor int16 (raw analogRead, 0-1023)
+void Logger::CANLogSteer() {
   CAN_FRAME* outCAN = getCAN(*myTrike);
-  outCAN->length = 8;
-  outCAN->id = CANlogID++;
-   data = getAngle(*myTrike);
-  outCAN->data.uint32[0] = data;
-  turn = digitalRead(RIGHT_TURN_PIN);
-  outCAN->data.int16[2] = turn;
-  turn = digitalRead(LEFT_TURN_PIN);
-  outCAN->data.int16[3] = turn;
+  outCAN->id = LogSteer_CANID;
+  outCAN->length = 6;
+  outCAN->data.int16[0] = getAngle(*myTrike);
+  outCAN->data.int16[1] = (int16_t)analogRead(R_SENSE_PIN);
+  outCAN->data.int16[2] = (int16_t)analogRead(L_SENSE_PIN);
   myTrike->sendCan();
-} 
+}
 /******************************************************
 Report sensors and actuators for propulsion
 *******************************************************/ 
@@ -386,16 +374,17 @@ void Logger::TxThrottle() {
   serialLOG.print(",");
   serialLOG.print(getDriveMode(*myTrike));
 }
-void Logger::CANThrottle() {
-  unsigned long data;
-  int mode;
+// 0x706 LogThrottle — 4 bytes: actual_speed + throttle_pwm + drive_mode.
+//   bytes 0-1: actual_speed int16 LE (cm/s)
+//   byte  2:   throttle_pwm uint8 (0-255; not yet surfaced from SpeedController, emits 0)
+//   byte  3:   drive_mode uint8 (FORWARD_MODE/REVERSE_MODE)
+void Logger::CANLogThrottle() {
   CAN_FRAME* outCAN = getCAN(*myTrike);
-  outCAN->length = 8;
-  outCAN->id = CANlogID++;
-  data = getSpeed(*myTrike);
-  outCAN->data.uint32[0] = data;
-  mode = getDriveMode(*myTrike);
-  outCAN->data.int16[3] = mode;
+  outCAN->id = LogThrottle_CANID;
+  outCAN->length = 4;
+  outCAN->data.int16[0] = getSpeed(*myTrike);
+  outCAN->data.uint8[2] = 0;  // TODO: expose throttle PWM from SpeedController
+  outCAN->data.uint8[3] = (uint8_t)getDriveMode(*myTrike);
   myTrike->sendCan();
 }
 /******************************************************
@@ -410,15 +399,13 @@ void Logger::TxBrakes()  {
   serialLOG.print(",");
   serialLOG.print(digitalRead(BRAKE_VOLT_PIN));
 }
-void Logger::CANBrakes()  {
-  char brake;
+// 0x707 LogBrakes — 2 bytes: brake_on (uint8) + brake_voltage (uint8).
+void Logger::CANLogBrakes() {
   CAN_FRAME* outCAN = getCAN(*myTrike);
+  outCAN->id = LogBrakes_CANID;
   outCAN->length = 2;
-  outCAN->id = CANlogID++;
-  brake = digitalRead(BRAKE_ON_PIN);
-  outCAN->data.int8[0] = brake;
-  brake = digitalRead(BRAKE_VOLT_PIN);
-  outCAN->data.int8[1] = brake;
+  outCAN->data.uint8[0] = (uint8_t)digitalRead(BRAKE_ON_PIN);
+  outCAN->data.uint8[1] = (uint8_t)digitalRead(BRAKE_VOLT_PIN);
   myTrike->sendCan();
 }
 /******************************************************
@@ -428,20 +415,61 @@ void Logger::HdrEndLine() {
   serialLOG.println(",Utilization");
 }
 void Logger::EndLine(uint32_t delayTime) {
-  int PerCentBusy = ((LOOP_TIME_MS - delayTime)*100)/LOOP_TIME_MS;
-  if (logMethod == 3)
-  {
-    CAN_FRAME* outCAN = getCAN(*myTrike);
-    outCAN->length = 2;
-    outCAN->id = CANlogID;
-    outCAN->data.int16[0] = PerCentBusy;
-    myTrike->sendCan();   
-    CANlogID = Log_CANID;
-  }
-  else
-  {
+  int PerCentBusy = ((LOOP_TIME_MS - delayTime) * 100) / LOOP_TIME_MS;
+  CANLogFinalize(PerCentBusy);   // 0x70A — always emit so the receiver knows the row is complete
+  if (logMethod != 2) {
     serialLOG.print(",");
     serialLOG.println(PerCentBusy);
-    serialLOG.flush();   // Flush the file to make sure data is written immediately
+    serialLOG.flush();   // ensure data is written immediately
   }
+}
+
+// 0x703 LogOp — 8 bytes: operator panel state.
+//   bytes 0-1: joystick X (int16, raw analogRead of OP_STEER, 0-1023)
+//   bytes 2-3: joystick Y (int16, raw analogRead of OP_THROTTLE, 0-1023)
+//   byte  4:   switch bitfield (0x10 fwd/rev, 0x20 auto/manual, 0x40 disconnect, 0x80 estop)
+//   byte  5:   commanded brake (uint8)
+//   bytes 6-7: commanded steer angle (int16 LE, deg x 10)
+void Logger::CANLogOp() {
+  CAN_FRAME* outCAN = getCAN(*myTrike);
+  outCAN->id = LogOp_CANID;
+  outCAN->length = 8;
+  outCAN->data.int16[0] = (int16_t)analogRead(OP_STEER);
+  outCAN->data.int16[1] = (int16_t)analogRead(OP_THROTTLE);
+  uint8_t sw = 0;
+  if (digitalRead(OP_FWD_PIN))    sw |= 0x10;
+  if (digitalRead(OP_MODE_PIN))   sw |= 0x20;
+  if (digitalRead(OP_DISCNT_PIN)) sw |= 0x40;
+  if (digitalRead(OP_ESTOP))      sw |= 0x80;
+  outCAN->data.uint8[4] = sw;
+  outCAN->data.uint8[5] = (uint8_t)getD_brakes(*myTrike);
+  outCAN->data.int16[3] = getD_Angle(*myTrike);
+  myTrike->sendCan();
+}
+
+// 0x704 LogAuto — 7 bytes: what DBW received from Nav (mirrors 0x350 + 0x100 status byte).
+//   bytes 0-1: nav_speed int16 LE (cm/s)
+//   byte  2:   nav_brake uint8 (0/1/2)
+//   byte  3:   nav_mode  uint8 (0-7, Nav-requested state — DBW arbitrates)
+//   bytes 4-5: nav_angle int16 LE (deg x 10)
+//   byte  6:   nav_status uint8 (0x100 byte 0: 0x80 estop, 0x40 auto, 0x04 reverse, ...)
+void Logger::CANLogAuto() {
+  CAN_FRAME* outCAN = getCAN(*myTrike);
+  outCAN->id = LogAuto_CANID;
+  outCAN->length = 7;
+  outCAN->data.int16[0] = getNavSpeed(*myTrike);
+  outCAN->data.uint8[2] = getNavBrake(*myTrike);
+  outCAN->data.uint8[3] = getNavMode(*myTrike);
+  outCAN->data.int16[2] = getNavAngle(*myTrike);
+  outCAN->data.uint8[6] = getNavStatus(*myTrike);
+  myTrike->sendCan();
+}
+
+// 0x70A LogFinalize — 1 byte: CPU utilization (%) for the loop tick.
+void Logger::CANLogFinalize(int PerCentBusy) {
+  CAN_FRAME* outCAN = getCAN(*myTrike);
+  outCAN->id = LogFinalize_CANID;
+  outCAN->length = 1;
+  outCAN->data.uint8[0] = (uint8_t)PerCentBusy;
+  myTrike->sendCan();
 }

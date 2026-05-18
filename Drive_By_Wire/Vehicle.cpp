@@ -31,6 +31,11 @@ Vehicle::Vehicle()
   currentDriveMode = FORWARD_MODE;
   currentAutoMode = INITIALIZING;
   canActive = false;
+  last_nav_speed_cmPs = 0;
+  last_nav_brake = 0;
+  last_nav_mode = 0;
+  last_nav_angle_DegX10 = 0;
+  last_nav_status = 0;
 
    if (!Can0.begin(CAN_BPS_500K))  // initialize CAN with 500kbps baud rate
   {
@@ -151,21 +156,33 @@ bool Vehicle::sendCan() {
 }
 /*************************************************************************************
    Checks for receipt of a message from CAN bus for new
-   desired speed/angle/brake instructions from high-level board
-   Protocol (per elcanoproject.org/wiki/Communication):
-     0x350 HiDrive  - int16[0]=speed_cmPs, int16[1]=brake, int16[2]=angle_DegX10
-     0x100 HiStatus - byte0 bits: 0x80=E-stop, 0x40=autonomous, 0x04=reverse
+   desired speed/angle/brake instructions from high-level board.
+   Protocol per https://www.elcanoproject.org/wiki/Communication :
+     0x350 HiDrive (6 bytes used):
+       bytes 0-1: CommandedSpeed int16 LE (cm/s)
+       byte  2:   Brake uint8 (0=off, 1=hold/12V, 2=on/24V)
+       byte  3:   Mode  uint8 (0-7 — Nav-requested state; DBW arbitrates)
+       bytes 4-5: CommandedSteerAngle int16 LE (deg x 10)
+     0x100 HiStatus (1 byte used):
+       byte 0 bits: 0x80=E-stop, 0x40=autonomous, 0x04=reverse,
+                    0x02=reverse pending, 0x01=reverse unavailable
  ************************************************************************************/
 void Vehicle::receiveCan() {
   while (Can0.available() > 0) {
     Can0.read(incoming);
     if (incoming.id == HiDrive_CANID) {
-      desired_speed_cmPs = incoming.data.int16[0];
-      desired_brake = incoming.data.int16[1];
-      desired_angle_DegX10 = incoming.data.int16[2];
+      desired_speed_cmPs   = incoming.data.int16[0];   // bytes 0-1
+      desired_brake        = incoming.data.uint8[2];   // byte 2 (was int16 — wiki spec is uint8)
+      desired_angle_DegX10 = incoming.data.int16[2];   // bytes 4-5
+      // Buffer raw Nav-sent values for 0x704 Log_auto emit.
+      last_nav_speed_cmPs   = desired_speed_cmPs;
+      last_nav_brake        = incoming.data.uint8[2];
+      last_nav_mode         = incoming.data.uint8[3];  // byte 3 mode (informational)
+      last_nav_angle_DegX10 = desired_angle_DegX10;
       canActive = true;
     } else if (incoming.id == HiStatus_CANID) {
       uint8_t status = incoming.data.uint8[0];
+      last_nav_status = status;
       if (status & 0x80) {
         currentAutoMode = ESTOP_RC;                    // 0x80 E-stop
       } else {
