@@ -51,10 +51,23 @@ void SpeedController::tick() {
 int32_t SpeedController::update(int32_t dSpeed, DriveMode mode) {
   if (state == BR_HI_VOLTS && millis() > brake_change_ms)
   {
-    digitalWrite(BRAKE_VOLT_PIN, OFF_BR);   // Use 12V activation  
+    digitalWrite(BRAKE_VOLT_PIN, OFF_BR);   // Use 12V activation
     state = BR_LO_VOLTS;
   }
- 
+
+  // If Nav (or the operator path) commands zero speed, bypass the PID and
+  // brake hard. The PID's integral accumulates a positive bias during the
+  // cruise phase; if we keep running PID(0) afterward, the integral keeps
+  // DAC0 above zero and the ACCEL branch in ThrottlePID() releases the
+  // brakes — so the simulator keeps reading "throttle on" and the trike
+  // never actually stops. Same wind-up condition that would occur on the
+  // real trike after a long cruise.
+  if (dSpeed <= 0) {
+    Stop();
+    computeSpeed();
+    return 0;
+  }
+
   //Reverse doesn't seem to work
   // if (mode == REVERSE_MODE) {
   //   dSpeed = constrain(dSpeed, 0, 150);  // prevent negatives
@@ -73,7 +86,11 @@ int32_t SpeedController::update(int32_t dSpeed, DriveMode mode) {
 }
 
 void SpeedController::ThrottlePID(int32_t desiredValue) {
-  // speedPID(&speedCyclometer_cmPs, &PIDThrottle, &desiredSpeed_cmPs
+  // speedPID(&speedCyclometer_cmPs, &PIDThrottle, &desiredSpeed_cmPs)
+  // BUGFIX: write the param into the setpoint that PID actually reads through
+  // its pointer. Without this line PID always sees setpoint=0 and never
+  // throttles up regardless of what Nav commands.
+    desiredSpeed_cmPs = desiredValue;
     speedPID.Compute();
     if (PIDThrottle < PID_BRAKE)
     {  // Apply brakes
