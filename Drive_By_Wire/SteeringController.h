@@ -23,6 +23,16 @@ private:
   int currentAngle_DegX10 = 0;
   int steeringMode = 0;
 
+  // Steering-feedback state. Preferred source is the measured angle passed
+  // into update() (from simulator 0x430 CAN, or on real hardware from analog
+  // L_SENSE/R_SENSE reads in a future revision). If no feedback has ever
+  // arrived (haveMeasured == false), update() falls back to an internal
+  // open-loop model that integrates the assertions from SteeringPID.
+  uint32_t lastUpdate_ms = 0;
+  bool haveMeasured  = false;
+  bool drovLeftLast  = false;
+  bool drovRightLast = false;
+
   // Private methods
   void SteeringPID(int input);
    int computeAngleLeft();
@@ -31,8 +41,11 @@ public:
   SteeringController();
   ~SteeringController();
 
-  // Main update method
-  int update(int desiredangle_DegX10);
+  // Main update method.
+  // measured_angle_DegX10 is the actual wheel angle reported back from the
+  // simulator (or, on real hardware, the analog sensor read). Pass 0 if no
+  // feedback is available; the open-loop model fallback will be used.
+  int update(int desiredangle_DegX10, int measured_angle_DegX10 = 0);
 
   // Optional getter for debugging
   int getSteeringMode();

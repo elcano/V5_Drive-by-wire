@@ -51,6 +51,11 @@ void loop() {
    Log->EndLine(delayTime);     // Finalize SD line by giving utilization
   if (delayTime <= 0) delayTime = 0;
   if (delayTime >= LOOP_TIME_MS) delayTime = LOOP_TIME_MS;
-  delay(delayTime);
+  // Instead of plain delay(), spin-drain CAN so we don't miss Sensor Hub's
+  // 0x350/0x100 frames while DBW's own Logger floods the bus with 0x701-0x70A.
+  uint32_t spinUntil = millis() + delayTime;
+  while (millis() < spinUntil) {
+    myTrike->receiveCan();
+  }
 
 }

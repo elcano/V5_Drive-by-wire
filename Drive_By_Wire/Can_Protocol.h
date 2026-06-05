@@ -15,6 +15,10 @@
 #define HiDrive_CANID 0x350
 #define Actual_CANID 0x400
 #define LiDAR_CANID 0x420
+// Simulator-only: Router publishes its simulated actual wheel angle so DBW
+// can close its steering PID loop. On the real trike, DBW reads the analog
+// L_SENSE/R_SENSE potentiometers instead and ignores this frame.
+#define SimSteerActual_CANID 0x430
 #define Sonar_CANID 0x440
 #define CameraObstacl_CANID 0x460
 #define CameraCone_CANID 0x480

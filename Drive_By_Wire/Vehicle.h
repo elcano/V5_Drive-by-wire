@@ -53,6 +53,13 @@ private:
   int brakeHold; // Hold brakes with 12V
   long throttle_cmPs;
   long steer_DegX10;
+  // Measured actual wheel angle, supplied by simulator over CAN (0x430).
+  // Replaces the analog L_SENSE/R_SENSE read in the closed steering loop
+  // when running on the Bridge (where those analog wires are broken).
+  // 0 until the first 0x430 frame arrives.
+  int16_t measured_wheel_angle_DegX10;
+public:
+  int16_t getMeasuredWheelAngle_DegX10() const { return measured_wheel_angle_DegX10; }
 } ;
 
 class Logger {
