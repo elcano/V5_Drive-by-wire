@@ -28,7 +28,6 @@ private:
   // L_SENSE/R_SENSE reads in a future revision). If no feedback has ever
   // arrived (haveMeasured == false), update() falls back to an internal
   // open-loop model that integrates the assertions from SteeringPID.
-  uint32_t lastUpdate_ms = 0;
   bool haveMeasured  = false;
   bool drovLeftLast  = false;
   bool drovRightLast = false;

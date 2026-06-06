@@ -56,20 +56,15 @@ int SteeringController::update(int desiredangle_DegX10, int measured_angle_DegX1
   if (haveMeasured) {
     steerAngle_DegX10 = (float)measured_angle_DegX10;
   } else {
-    // Open-loop fallback. Slew 200 degX10/sec matches Router's default
-    // ANGLE_CHANGE_TENTHS = 20 per 100 ms.
-    const int FALLBACK_SLEW_DegX10_PER_SEC = 200;
-    const int MAX_ANGLE_DegX10             = 250;
-    uint32_t now = millis();
-    if (lastUpdate_ms != 0) {
-      uint32_t dt_ms = now - lastUpdate_ms;
-      int      slew  = (int)(((uint32_t)FALLBACK_SLEW_DegX10_PER_SEC * dt_ms) / 1000U);
-      if (drovLeftLast)  steerAngle_DegX10 -= slew;
-      if (drovRightLast) steerAngle_DegX10 += slew;
-      if (steerAngle_DegX10 >  MAX_ANGLE_DegX10) steerAngle_DegX10 =  MAX_ANGLE_DegX10;
-      if (steerAngle_DegX10 < -MAX_ANGLE_DegX10) steerAngle_DegX10 = -MAX_ANGLE_DegX10;
-    }
-    lastUpdate_ms = now;
+    // Open-loop fallback: mirror Router's fixed 20 degX10 / loop step
+    // (ANGLE_CHANGE_TENTHS in simulator_stage1.ino). One step per DBW
+    // loop while a direction wire is asserted.
+    const int ANGLE_STEP_DegX10 = 20;
+    const int MAX_ANGLE_DegX10  = 250;
+    if (drovLeftLast)  steerAngle_DegX10 -= ANGLE_STEP_DegX10;
+    if (drovRightLast) steerAngle_DegX10 += ANGLE_STEP_DegX10;
+    if (steerAngle_DegX10 >  MAX_ANGLE_DegX10) steerAngle_DegX10 =  MAX_ANGLE_DegX10;
+    if (steerAngle_DegX10 < -MAX_ANGLE_DegX10) steerAngle_DegX10 = -MAX_ANGLE_DegX10;
   }
   currentAngle_DegX10 = (int)steerAngle_DegX10;
 
