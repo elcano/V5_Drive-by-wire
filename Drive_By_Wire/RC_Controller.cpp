@@ -14,7 +14,9 @@ RC_Controller::RC_Controller() {
   pinMode(CH3_PIN, INPUT);
   pinMode(CH4_PIN, INPUT);
   pinMode(CH5_PIN, INPUT);
-  pinMode(CH6_PIN, INPUT);
+  // CH6_PIN (D26) collides with LEFT_TURN_PIN — leave it owned by
+  // SteeringController (OUTPUT). CH6 is reserved/unused on the RC anyway.
+  // pinMode(CH6_PIN, INPUT);
   pinMode(OP_MODE_PIN, INPUT_PULLUP);  // HIGH when no operator hardware = op_enabled false
   pinMode(OP_ESTOP, INPUT_PULLUP);     // HIGH when no operator hardware = no estop
   pinMode(OP_FWD_PIN, INPUT_PULLUP);  // HIGH = reverse, LOW = forward
@@ -27,11 +29,12 @@ RC_Controller::RC_Controller() {
    }
    
   attachInterrupt(digitalPinToInterrupt(STEERING_CH1_PIN), ISR_STEERING_RISE, RISING);
-  attachInterrupt(digitalPinToInterrupt(THROTTLE_BR_CH2_PIN), ISR_THROTTLE_RISE, RISING); 
+  attachInterrupt(digitalPinToInterrupt(THROTTLE_BR_CH2_PIN), ISR_THROTTLE_RISE, RISING);
   attachInterrupt(digitalPinToInterrupt(CH3_PIN), RC_Controller::ISR_CH3_Rise, RISING);
   attachInterrupt(digitalPinToInterrupt(CH4_PIN), RC_Controller::ISR_CH4_Rise, RISING);
   attachInterrupt(digitalPinToInterrupt(CH5_PIN), RC_Controller::ISR_CH5_Rise, RISING);
-  attachInterrupt(digitalPinToInterrupt(CH6_PIN), RC_Controller::ISR_CH6_Rise, RISING);
+  // CH6 ISR disabled — pin 26 is owned by SteeringController as LEFT_TURN_PIN.
+  // attachInterrupt(digitalPinToInterrupt(CH6_PIN), RC_Controller::ISR_CH6_Rise, RISING);
 }
 
 RC_Controller::~RC_Controller() {}

@@ -65,7 +65,9 @@
 #define L_SENSE_PIN        A10
 #define R_SENSE_PIN        A11
  // relay had turned on 12V power for steering. Now it controls 12V power to disconnect.
-#define GATE_RAISE_PIN      28
+// GATE_RAISE_PIN was on 28; pin 28 is now claimed by RIGHT_TURN_PIN per bridge
+// wiring. If gate-raise is reintroduced, move it to a different pin.
+// #define GATE_RAISE_PIN      28
 #if (DBWversion <=4) 
   #define STEERING_CH1_PIN  23
   // Command to e-bike controller to drive in reverse
@@ -85,10 +87,16 @@
 #define SD_CS_PIN           33
 // Chip select if using an SPI angle sensor
 #define ANG_CS_PIN          39
-// Pin used to steer the vehicle with a pulse
-#define STEER_PULSE_PIN     48
-#define RIGHT_TURN_PIN      48
-#define LEFT_TURN_PIN       41
+// Closed-loop steering: two-wire digital direction signals (per Minhee's bridge wiring).
+//   DBW pin 26 (L_TURN) → Router D4  (digitalWrite HIGH while turning left)
+//   DBW pin 28 (R_TURN) → Router D2  (digitalWrite HIGH while turning right)
+// Pin 26 collides with CH6_PIN — RC_Controller's CH6 init must stay disabled.
+#define LEFT_TURN_PIN       26
+#define RIGHT_TURN_PIN      28
+// STEER_PULSE_PIN was the old servo-pulse output; bridge uses the two-wire
+// L_TURN/R_TURN scheme above instead. Aliased to RIGHT_TURN_PIN so any
+// legacy reference still resolves to a valid pin.
+#define STEER_PULSE_PIN     RIGHT_TURN_PIN
 // steer pins on motor control board
 #define STEER_SPEED_PIN     3
 #define STEER_ON_PIN        9
@@ -108,6 +116,8 @@
 #define BUZZER_PIN          38 
 // Reserved for regenerative braking
 #define REGEN_PIN            43 
+// Restored to pin 44 now that steering uses the proper L_TURN/R_TURN wires
+// (DBW D26/D28). The Router brake wire (DBW D44 → Router D48) is the live path.
 #define BRAKE_ON_PIN         44
 // Brakes, have relays for both on/off as well as selecting 12/24v power.
 #define BRAKE_VOLT_PIN       40

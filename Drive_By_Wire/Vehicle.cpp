@@ -36,6 +36,7 @@ Vehicle::Vehicle()
   last_nav_mode = 0;
   last_nav_angle_DegX10 = 0;
   last_nav_status = 0;
+  measured_wheel_angle_DegX10 = 0;
 
    if (!Can0.begin(CAN_BPS_500K))  // initialize CAN with 500kbps baud rate
   {
@@ -43,8 +44,10 @@ Vehicle::Vehicle()
   } else {
      Serial.println("Can0 init failed");
   }
-  Can0.watchFor(HiStatus_CANID);   // listen for 0x100 (desired speed)
-  Can0.watchFor(HiDrive_CANID);    // listen for 0x350 (desired angle)
+  // Catch-all RX filter. Specific-ID watchFor() filters silently drop frames
+  // on this Due; confirmed by DBW_CAN_RX_Test that catch-all receives 0x350
+  // and 0x100 correctly. Single call leaves TX mailboxes free for sendCan().
+  Can0.watchFor();
   Serial.println("Vehicle constructor finished.");
 }
 
@@ -108,7 +111,7 @@ void Vehicle::update() {
   //_____________Implement desired values__________________________________________________
 
   currentSpeed_cmPs = throttle->update(desired_speed_cmPs, currentDriveMode);
-  currentAngle_DegX10 = steer->update(desired_angle_DegX10);
+  currentAngle_DegX10 = steer->update(desired_angle_DegX10, measured_wheel_angle_DegX10);
   outgoing.id = Actual_CANID;
   outgoing.length = 6;
   outgoing.data.int16[0] = currentSpeed_cmPs;
@@ -180,6 +183,17 @@ void Vehicle::receiveCan() {
       last_nav_mode         = incoming.data.uint8[3];  // byte 3 mode (informational)
       last_nav_angle_DegX10 = desired_angle_DegX10;
       canActive = true;
+      // Explicit proof of 0x350 reception. Throttled to ~1s so it doesn't flood.
+      static uint32_t lastNavRxDbg_ms = 0;
+      if (millis() - lastNavRxDbg_ms > 1000) {
+        lastNavRxDbg_ms = millis();
+        SerialUSB.print("# DBW GOT 0x350 from Nav: speed=");
+        SerialUSB.print(desired_speed_cmPs);
+        SerialUSB.print(" brake=");
+        SerialUSB.print((int)desired_brake);
+        SerialUSB.print(" angle=");
+        SerialUSB.println(desired_angle_DegX10);
+      }
     } else if (incoming.id == HiStatus_CANID) {
       uint8_t status = incoming.data.uint8[0];
       last_nav_status = status;
@@ -191,6 +205,13 @@ void Vehicle::receiveCan() {
       }
       currentDriveMode = (status & 0x04) ? REVERSE_MODE : FORWARD_MODE;
       canActive = true;
+    } else if (incoming.id == SimSteerActual_CANID && incoming.length >= 2) {
+      // Simulator-only: Router's simulated actual wheel angle. Used in the
+      // closed steering loop in place of L_SENSE/R_SENSE analog reads.
+      // On the real trike this frame is not present and DBW will keep its
+      // last-seen value at 0 (and SteeringController will fall back to the
+      // analog read path).
+      measured_wheel_angle_DegX10 = incoming.data.int16[0];
     }
   }
 }
