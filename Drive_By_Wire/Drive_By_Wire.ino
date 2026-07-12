@@ -21,7 +21,11 @@ void setup() {
   digitalWrite(BLUE_LED_PIN,HIGH);
 #ifdef USE_NATIVE_USB
   SerialUSB.begin(baud);
-  while(!SerialUSB);
+  // Wait up to 500 ms for a serial monitor; proceed regardless so automated
+  // tests are not blocked when no monitor is connected. 500 ms is enough
+  // for a monitor that was open before reset; cold-boot without monitor
+  // starts DBW in < 500 ms so it's ready before the first test assertion.
+  { uint32_t t = millis(); while (!SerialUSB && (millis() - t) < 500); }
 #else
   Serial.begin(baud);
 #endif

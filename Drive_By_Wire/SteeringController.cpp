@@ -91,7 +91,10 @@ void SteeringController::SteeringPID(int input_DegX10) {
   drovRightLast = turnRight;
 
   static uint32_t lastDbg_ms = 0;
-  if (millis() - lastDbg_ms > 1000) {
+  // Only print when a USB host is connected — otherwise SerialUSB can block on
+  // a full TX buffer and stall the control loop (steering only works with a
+  // monitor open). See the Logger guard for the full explanation.
+  if (SerialUSB && millis() - lastDbg_ms > 1000) {
     lastDbg_ms = millis();
     SerialUSB.print("# DBW steer cmd="); SerialUSB.print(input_DegX10);
     SerialUSB.print(" modeled=");        SerialUSB.print((int)steerAngle_DegX10);

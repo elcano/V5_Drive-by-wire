@@ -185,7 +185,8 @@ void Vehicle::receiveCan() {
       canActive = true;
       // Explicit proof of 0x350 reception. Throttled to ~1s so it doesn't flood.
       static uint32_t lastNavRxDbg_ms = 0;
-      if (millis() - lastNavRxDbg_ms > 1000) {
+      // Guard on SerialUSB connection so a missing host can't block the loop.
+      if (SerialUSB && millis() - lastNavRxDbg_ms > 1000) {
         lastNavRxDbg_ms = millis();
         SerialUSB.print("# DBW GOT 0x350 from Nav: speed=");
         SerialUSB.print(desired_speed_cmPs);
