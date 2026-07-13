@@ -110,6 +110,12 @@ void Vehicle::update() {
    }
   //_____________Implement desired values__________________________________________________
 
+  // Brake-over-throttle safety: an explicit brake command must dominate any
+  // throttle request. Without this, desired_brake is parsed but never reaches
+  // the throttle path, which only brakes when desired_speed_cmPs <= 0 — so a
+  // "speed > 0 AND brake on" command would keep driving. Force the stop path.
+  if (desired_brake > 0) desired_speed_cmPs = 0;
+
   currentSpeed_cmPs = throttle->update(desired_speed_cmPs, currentDriveMode);
   currentAngle_DegX10 = steer->update(desired_angle_DegX10, measured_wheel_angle_DegX10);
   outgoing.id = Actual_CANID;
@@ -185,8 +191,9 @@ void Vehicle::receiveCan() {
       canActive = true;
       // Explicit proof of 0x350 reception. Throttled to ~1s so it doesn't flood.
       static uint32_t lastNavRxDbg_ms = 0;
-      // Guard on SerialUSB connection so a missing host can't block the loop.
-      if (SerialUSB && millis() - lastNavRxDbg_ms > 1000) {
+      // Only print when the USB TX buffer has room so an unread host can't
+      // block the loop; availableForWrite() gating makes this non-blocking.
+      if (SerialUSB && SerialUSB.availableForWrite() >= 96 && millis() - lastNavRxDbg_ms > 1000) {
         lastNavRxDbg_ms = millis();
         SerialUSB.print("# DBW GOT 0x350 from Nav: speed=");
         SerialUSB.print(desired_speed_cmPs);

@@ -76,12 +76,16 @@ int SteeringController::update(int desiredangle_DegX10, int measured_angle_DegX1
 void SteeringController::SteeringPID(int input_DegX10) {
   desiredTurn_DegX10 = input_DegX10;
   // Bang-bang on two digital wires with deadband.
-  //   err > +5  -> RIGHT_TURN HIGH, LEFT_TURN LOW
-  //   err < -5  -> LEFT_TURN HIGH,  RIGHT_TURN LOW
-  //   |err| <=5 -> both LOW (hold)
+  //   err > +10  -> RIGHT_TURN HIGH, LEFT_TURN LOW
+  //   err < -10  -> LEFT_TURN HIGH,  RIGHT_TURN LOW
+  //   |err| <=10 -> both LOW (hold)
   // update() advances the modeled angle next loop based on which direction
   // we drove this loop.
-  const int DEADBAND_DegX10 = 5;
+  // Deadband is 10 (= half the 20-tenth/loop slew step). The wheel can only
+  // rest on a 20-spaced grid, so the nearest holdable point is at most 10 away.
+  // A smaller deadband (e.g. 5) leaves the wheel unable to land inside the band
+  // and it hunts +/-10 forever; 10 lets it settle.
+  const int DEADBAND_DegX10 = 10;
   int err = input_DegX10 - (int)steerAngle_DegX10;
   bool turnLeft  = (err < -DEADBAND_DegX10);
   bool turnRight = (err >  DEADBAND_DegX10);
@@ -91,10 +95,11 @@ void SteeringController::SteeringPID(int input_DegX10) {
   drovRightLast = turnRight;
 
   static uint32_t lastDbg_ms = 0;
-  // Only print when a USB host is connected — otherwise SerialUSB can block on
-  // a full TX buffer and stall the control loop (steering only works with a
-  // monitor open). See the Logger guard for the full explanation.
-  if (SerialUSB && millis() - lastDbg_ms > 1000) {
+  // Only print when the USB TX buffer has room — otherwise SerialUSB.print()
+  // blocks on a full buffer when no host is reading and stalls the control
+  // loop. availableForWrite() gating makes the print non-blocking: it is simply
+  // skipped when there is no room.
+  if (SerialUSB && SerialUSB.availableForWrite() >= 96 && millis() - lastDbg_ms > 1000) {
     lastDbg_ms = millis();
     SerialUSB.print("# DBW steer cmd="); SerialUSB.print(input_DegX10);
     SerialUSB.print(" modeled=");        SerialUSB.print((int)steerAngle_DegX10);
