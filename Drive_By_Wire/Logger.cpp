@@ -216,7 +216,17 @@ void Logger::update() {
   // 0x709 LogPosition is emitted by Nav (not DBW) — left for the Sensor Hub log row.
 
   // SD/serial: write a CSV row if that sink is available.
-  if (logMethod != 2) {
+  // On the Due's native USB, SerialUSB.print()/flush() BLOCK on a full TX
+  // buffer when no host is draining it, which freezes the control loop
+  // (steering/throttle stop updating — works only with a monitor open).
+  // Only write when the USB TX buffer has room for a whole row, so a host that
+  // isn't reading can never make print() block. If there's no room, skip the
+  // row entirely — the control loop always keeps running.
+  if (logMethod != 2
+#ifdef USE_NATIVE_USB
+      && SerialUSB && SerialUSB.availableForWrite() >= 200
+#endif
+     ) {
     TxTime();
     TxLogRC();
     TxDesired();
@@ -417,10 +427,16 @@ void Logger::HdrEndLine() {
 void Logger::EndLine(uint32_t delayTime) {
   int PerCentBusy = ((LOOP_TIME_MS - delayTime) * 100) / LOOP_TIME_MS;
   CANLogFinalize(PerCentBusy);   // 0x70A — always emit so the receiver knows the row is complete
-  if (logMethod != 2) {
+  // Match the guard in update(): only write when the USB TX buffer has room,
+  // and never flush() — flush() blocks until a host drains the buffer, which
+  // freezes the loop when nothing is reading.
+  if (logMethod != 2
+#ifdef USE_NATIVE_USB
+      && SerialUSB && SerialUSB.availableForWrite() >= 16
+#endif
+     ) {
     serialLOG.print(",");
     serialLOG.println(PerCentBusy);
-    serialLOG.flush();   // ensure data is written immediately
   }
 }
 
