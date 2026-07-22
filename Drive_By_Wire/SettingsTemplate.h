@@ -27,8 +27,15 @@ Minimum and maximum speed allowed
 #define MIN_SPEED_cmPs  (0.01 * MAX_SPEED_cmPs)
 
 /*=========================================================================
-Settings for the Steering 
-Minimum/Maximum and center turning signals
+Settings for the Steering */
+#define STR_PWM     0
+#define SRT_HBRIDGE 1
+#define STR_MOTOR_CONTROL 2
+// Yellow trike uses pulse width steering servo
+// #define STEER_METHOD STR_PWM
+// Orange trike uses motor control shield with feedback from angle sensor
+#define STEER_METHOD STR_MOTOR_CONTROL
+/* Minimum/Maximum and center turning signals
 */
 // Which sensors are enabled: left or right steering column; analog, SPI or CAN
 #define R_ANALOG 0x01

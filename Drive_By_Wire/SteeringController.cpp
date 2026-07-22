@@ -89,8 +89,24 @@ void SteeringController::SteeringPID(int input_DegX10) {
   int err = input_DegX10 - (int)steerAngle_DegX10;
   bool turnLeft  = (err < -DEADBAND_DegX10);
   bool turnRight = (err >  DEADBAND_DegX10);
+#if (STEER_METHOD == STR_MOTOR_CONTROL)
+  if (err >= -DEADBAND_DegX10 && err <=  DEADBAND_DegX10)
+  {
+    digitalWrite(STEER_ON_PIN, ST_OFF);  // no movement
+  }
+  else {
+   digitalWrite(STEER_SPEED_PIN, 0xFF);  // max speed. May want to slow down for small err
+   // To do: read motor current on A0 and redeuce speed if too much power.
+   digitalWrite(STEER_DIR_PIN, turnRight); 
+   digitalWrite(STEER_ON_PIN, ST_ON);  // move
+  }
+#elif (STEER_METHOD == STR_MOTOR_CONTROL)
   digitalWrite(LEFT_TURN_PIN,  turnLeft  ? HIGH : LOW);
   digitalWrite(RIGHT_TURN_PIN, turnRight ? HIGH : LOW);
+#else  // pulse width
+  // To do: Find servo destination and write high to STEER_PULSE_PIN. 
+  // Set a timer to take pulse low according to desired pulse width.
+#endif
   drovLeftLast  = turnLeft;
   drovRightLast = turnRight;
 
