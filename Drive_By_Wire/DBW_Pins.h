@@ -12,7 +12,10 @@
 //Version can be 1,3, 4, 5; LLB = Low Level Board = Drive By Wire; 1,2,3 no longer supported.
 #define DBWversion 5
 
-#define MAP(val,dlo,dhi,nlo,nhi) ((nlo) + (((val-(dlo))*((nhi)-(nlo)))/((dhi)-(dlo))))
+// Cast to long before subtracting: callers pass unsigned long (RC elapsedTime[]),
+// and when val < dlo the unsigned subtraction wraps to ~4.29e9 instead of going
+// negative. A dead RC channel reading 0 us used to map to 4294867 this way.
+#define MAP(val,dlo,dhi,nlo,nhi) ((nlo) + ((((long)(val)-(long)(dlo))*((nhi)-(nlo)))/((dhi)-(dlo))))
 
 // serial goes to serial monitor; other settings can have another microprocessor do the logging
 // serial1 connects to router on Bridge; 

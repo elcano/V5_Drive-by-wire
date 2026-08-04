@@ -13,6 +13,82 @@
 tmElements_t tm;
 extern Vehicle *myTrike;
 
+/* Commit a finished CSV row to the log sink.
+
+   serialLOG is a macro naming the sink object, so a bare `serialLOG.flush()`
+   means two different things: on the SD `logfile` it commits the 512-byte cache
+   and updates the directory entry (without it LOG00.CSV reads as 0 bytes), but
+   on SerialUSB it blocks until a USB host drains the TX buffer, which freezes
+   the 100 ms control loop. Commit e2e168f deleted the shared call to stop the
+   freeze and silently took SD's commit with it.
+
+   Overload resolution keeps both: File matches the non-template exactly and
+   gets the real flush(); every serial port falls to the template, whose empty
+   body compiles to nothing, so the blocking flush is not in the binary at all. */
+/* Name of the steering method compiled in, so a log says which mode produced it. */
+#if   (STEER_METHOD == STR_MOTOR_CONTROL)
+  #define STEER_METHOD_NAME "motor_control"
+#elif (STEER_METHOD == SRT_HBRIDGE)
+  #define STEER_METHOD_NAME "hbridge_2wire"
+#else
+  #define STEER_METHOD_NAME "servo_pwm"
+#endif
+
+static inline void flushSink(File &f) { f.flush(); }
+template <typename T> static inline void flushSink(T &) {}
+
+/* Is serialLOG the SD File, or a serial port? This has to be decided by TYPE at
+   compile time. Testing the objects (`serialLOG == logfile`) instead calls
+   operator bool() on both sides, and for SerialUSB that reports "is a USB host
+   attached" — false at boot — which wrongly selects the SD branch. */
+template <typename A, typename B> struct SinkIsFile      { static const bool value = false; };
+template <typename A>             struct SinkIsFile<A,A> { static const bool value = true;  };
+
+/* begin() a serial sink; no-op for the SD File, which has no begin(baud). */
+static inline void beginSink(File &, uint32_t) {}
+template <typename T> static inline void beginSink(T &port, uint32_t baud) { port.begin(baud); }
+
+/* May we write a CSV row right now?
+   Only the native USB port can stall: Serial_::write() discards bytes when no
+   host is attached, and a full TX buffer blocks the 100 ms control loop. So the
+   host check must apply ONLY when the sink really is SerialUSB. The old
+   `#ifdef USE_NATIVE_USB` guard applied it to EVERY sink, which meant that on a
+   Bridge board with USE_NATIVE_USB set, SD rows were written only while a PC had
+   the USB port open — the card got nothing when running standalone. */
+static inline bool sinkReady(File &, int)          { return true; }
+static inline bool sinkReady(Serial_ &s, int room) { return s && s.availableForWrite() >= room; }
+template <typename T> static inline bool sinkReady(T &, int) { return true; }
+
+/* Boot diagnostics for the Bridge board, where the programming port is not
+   cabled to a PC and Serial.println() goes nowhere anyone can see. Queue the
+   text here; sendBootReport() emits it on the native USB port from loop() once
+   a host is attached. It cannot be printed when it happens — operator bool() is
+   false while millis() < 500 and write() drops bytes with no host, so a direct
+   print at boot is lost. '#'-prefixed so a CSV parser treats them as comments. */
+static char     bootReport[220];
+static uint16_t bootLen  = 0;
+static bool     bootSent = false;
+
+static void bootMsg(const char *tag, const char *val) {
+  if (bootLen >= sizeof(bootReport) - 1) return;
+  int n = snprintf(bootReport + bootLen, sizeof(bootReport) - bootLen, "# %s%s\n", tag, val);
+  if (n > 0) {
+    uint16_t room = (uint16_t)(sizeof(bootReport) - bootLen - 1);
+    bootLen += ((uint16_t)n < room) ? (uint16_t)n : room;
+  }
+}
+static void bootMsg(const char *tag, int val) {
+  char b[12];
+  snprintf(b, sizeof(b), "%d", val);
+  bootMsg(tag, b);
+}
+static void sendBootReport() {
+  if (bootSent || bootLen == 0) return;
+  if (!SerialUSB || SerialUSB.availableForWrite() < 64) return;
+  SerialUSB.write((const uint8_t *)bootReport, bootLen);
+  bootSent = true;
+}
+
 /****************************************************************************
  Data Logger
  Record all stste data on each time slice.
@@ -56,20 +132,34 @@ void Logger::initialize() {
 #ifdef HAS_RTC
   initRTC();
 #endif
-  // Decide whether an SD or serial sink is available. CAN log emit is unconditional below.
-  // serialLOG (in Settings.h) is either `logfile` (SD) or a Serial port.
-  logMethod = (serialLOG == logfile) ? 0 : 1;
+  // Pick the CSV sink. serialLOG (Settings.h) is either `logfile` (SD) or a
+  // serial port; which one is a compile-time fact, decided by type.
+  out = &serialLOG;
+  logMethod = SinkIsFile<decltype(serialLOG), decltype(logfile)>::value ? 0 : 1;
   if (logMethod == 0) {
     if (!initSD() || !openSD()) {
-      logMethod = 2;  // SD failed — no local sink, CAN emit only
+      // SD unavailable. Rather than go silent (logMethod 2 writes nothing
+      // anywhere), fall back to a serial port so a log still exists.
+      // On the Bridge board the programming port is not cabled to a PC, so
+      // fall back to the native USB port there instead — otherwise the
+      // "always written" guarantee would write somewhere nobody can read.
+#ifdef USE_NATIVE_USB
+      out = &SerialUSB;
+      bootMsg("SD unavailable; CSV falls back to SerialUSB", "");
+#else
+      out = &Serial;
+      Serial.println("SD unavailable — falling back to serial log.");
+      bootMsg("SD unavailable; CSV falls back to Serial", "");
+#endif
+      logMethod = 1;
     }
   } else {
-#if (serialLOG != logfile)
-    if (serialLOG != Serial) {  // Serial monitor was begun in setup()
-      serialLOG.begin(115200);
-    }
-#endif
+    // Serial and SerialUSB are begun in setup(); Serial1/2/3 need it here.
+    beginSink(serialLOG, 115200);
   }
+
+  bootMsg("logMethod=", logMethod);   // 0=SD 1=serial 2=none
+  bootMsg("steer=", STEER_METHOD_NAME);
 
   // CAN: always emit session header so any listener (Sensor Hub Due, debug laptop, etc.)
   // sees a new session on the bus regardless of local SD/serial availability.
@@ -81,20 +171,9 @@ void Logger::initialize() {
   Serial.println("CAN log session opened (0x700).");
 #endif
 
-  // SD/serial: write CSV header only if that sink is available.
+  // Header is deferred to the first update() — see writeHeader().
+  headerSent = false;
   if (logMethod != 2) {
-    serialLOG.print(VEHICLE_NAME);
-    serialLOG.print(",");
-    serialLOG.print(timeString);
-    serialLOG.print(",");
-    serialLOG.println(dateString);
-    HdrTime();
-    HdrRC();
-    HdrDesired();
-    HdrThrottle();
-    HdrBrakes();
-    HdrSteer();
-    HdrEndLine();
 #ifndef USE_NATIVE_USB
     Serial.println(logMethod == 0 ? "SD log initialized." : "Serial log initialized.");
 #endif
@@ -107,55 +186,64 @@ void Logger::initialize() {
 /*******************************
 Initialize real time clock
 ********************************/ 
+// Convert the compiler's __DATE__/__TIME__ into tmElements_t. Build time is at
+// worst a few hours stale, which is far closer to real time than an unset DS1307.
+static bool buildTimeToTm(tmElements_t &t) {
+  static const char months[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  char mon[4] = {0};
+  int day = 0, year = 0, hh = 0, mi = 0, ss = 0;
+  if (sscanf(CompileDate, "%3s %d %d", mon, &day, &year) != 3) return false;
+  if (sscanf(CompileTime, "%d:%d:%d", &hh, &mi, &ss) != 3)     return false;
+  const char *p = strstr(months, mon);
+  if (!p) return false;
+  t.Month  = ((p - months) / 3) + 1;
+  t.Day    = (uint8_t)day;
+  t.Year   = (uint8_t)(year - 1970);   // tmElements_t Year is an offset from 1970
+  t.Hour   = (uint8_t)hh;
+  t.Minute = (uint8_t)mi;
+  t.Second = (uint8_t)ss;
+  return true;
+}
+
 bool Logger::initRTC()
 {
-/*
-typedef struct  { 
-  uint8_t Second; 
-  uint8_t Minute; 
-  uint8_t Hour; 
-  uint8_t Wday;   // day of week, sunday is day 1
-  uint8_t Day;
-  uint8_t Month; 
-  uint8_t Year;   // offset from 1970; 
-} 	tmElements_t
-*/
-  tm.Hour = (uint8_t)18;
-  tm.Minute = (uint8_t)8;
-  tm.Second = (uint8_t)0;
-  tm.Wday = (uint8_t)5;
-  tm.Day = (uint8_t)23;
-  tm.Month = (uint8_t)10;
-  tm.Year = (uint8_t)50;
-  // set needs an arg of time_t  RTC.set(tm);
-  // time_t is an unsigned long of seconds since 1/1/1970
-  time_t  epochSeconds= 0;
-  // epochSeconds += tm.Minute *60;
-  // epochSeconds += tm.Hour*60*60;
-  // epochSeconds += tm.Day*24*60*60;
-  epochSeconds += tm.Year*365*24*60*60;
-  epochSeconds += tm.Month *30*24*60*60;
-  // RTC.set(epochSeconds);
-  // setTime(epochSeconds);
+  // Always have a usable timestamp, even with no RTC at all.
+  strncpy(timeString, CompileTime, sizeof(timeString) - 1);
+  timeString[sizeof(timeString) - 1] = '\0';
+  strncpy(dateString, CompileDate, sizeof(dateString) - 1);
+  dateString[sizeof(dateString) - 1] = '\0';
 
-  strncpy(timeString, CompileTime,12);
-  strncpy(dateString, CompileDate,12); 
-  if (RTC.read(tm)) {
-    Serial.print("Ok, Time = ");
-    sprintf(timeString, "%2.2u:%2.2u:%2.2u\0",tm.Hour,tm.Minute,tm.Second);
-    Serial.print(timeString);
-    Serial.print(", Date (D/M/Y) = ");
-    sprintf(dateString, "%2.2u/%2.2u/%4.4u\0",tm.Day, tm.Month, tm.Year+1970);
-    Serial.println(dateString);
-    return (true);
-  } else {
-    if (RTC.chipPresent()) {
-      Serial.println("The DS1307 is stopped. Please run SetTime.");
+  bool ok = RTC.read(tm);
+
+  if (!ok) {
+    // The chip is stopped or unreadable. Previously this branch only printed
+    // "Please run SetTime" and the clock was never corrected, so every log
+    // carried a meaningless timestamp. Set it from build time instead.
+    tmElements_t bt;
+    if (buildTimeToTm(bt) && RTC.set(makeTime(bt))) {
+      Serial.println("RTC was not running — set from build time.");
+      bootMsg("RTC was not running; set from build time", "");
+      ok = RTC.read(tm);
+    } else if (RTC.chipPresent()) {
+      Serial.println("DS1307 present but could not be set.");
+      bootMsg("DS1307 present but could not be set", "");
     } else {
-      Serial.println("DS1307 read error!");
+      Serial.println("DS1307 not found — using build time for log timestamps.");
+      bootMsg("DS1307 not found; using build time", "");
     }
   }
-  return (false);
+
+  if (ok) {
+    snprintf(timeString, sizeof(timeString), "%02u:%02u:%02u",
+             tm.Hour, tm.Minute, tm.Second);
+    snprintf(dateString, sizeof(dateString), "%02u/%02u/%04u",
+             tm.Day, tm.Month, (unsigned)(tm.Year + 1970));
+    Serial.print("RTC time = ");            Serial.print(timeString);
+    Serial.print("  date (D/M/Y) = ");      Serial.println(dateString);
+    bootMsg("RTC ", dateString);
+    bootMsg("RTC ", timeString);
+  }
+  return ok;
 }
 /*******************************
 Initialize SD Card
@@ -168,11 +256,11 @@ bool Logger::initSD()
   pinMode(10,OUTPUT);   // Shield may use pin 10
 
   if (!SD.begin(SD_CS_PIN)) {
-    
+    bootMsg("SD.begin FAILED on CS pin ", (int)SD_CS_PIN);
     logfile = File();  // mark logfile as invalid
     return (false);
   }
- 
+  bootMsg("SD.begin OK on CS pin ", (int)SD_CS_PIN);
   return (true);
 }
 /*******************************
@@ -180,22 +268,31 @@ Open the SD Card
 ********************************/ 
 bool Logger::openSD()
 {
-  //Generate Unique Filename
-  char filename[13];
-  for (int i = 0; i < 100; i++) {
-    sprintf(filename, "LOG%02d.CSV", i);
-    if (!SD.exists(filename)) {
-      break;
+  // Name the log from the RTC so a file is identifiable by when it was recorded:
+  // MMDDHHMM.CSV, which is exactly the 8 characters FAT 8.3 allows.
+  // initRTC() runs before this in initialize(), so tm is already populated.
+  bool haveDate = (tm.Month >= 1 && tm.Month <= 12 && tm.Day >= 1 && tm.Day <= 31);
+  if (haveDate) {
+    snprintf(logName, sizeof(logName), "%02u%02u%02u%02u.CSV",
+             tm.Month, tm.Day, tm.Hour, tm.Minute);
+  }
+  // No usable clock, or a run already started in this same minute:
+  // fall back to the original sequential name so we never fail to open.
+  if (!haveDate || SD.exists(logName)) {
+    for (int i = 0; i < 100; i++) {
+      snprintf(logName, sizeof(logName), "LOG%02d.CSV", i);
+      if (!SD.exists(logName)) break;
     }
   }
-  logfile = SD.open(filename, FILE_WRITE);
+  logfile = SD.open(logName, FILE_WRITE);
   if (!logfile) {
     Serial.print("FAILED to open file: ");
-    Serial.println(filename);
+    Serial.println(logName);
        return (false);
   }
   Serial.print("Logging to: ");
-  Serial.println(filename);
+  Serial.println(logName);
+  bootMsg("logging to ", logName);
   return (true);
 }
 /****************************************
@@ -203,7 +300,30 @@ Write a new set of data to all available sinks.
   - CAN log emit is unconditional (every loop tick puts 0x701-0x70A on the bus).
   - SD/serial write only if logMethod != 2 (i.e. that sink was successfully initialized).
 ****************************************/
+/****************************************
+Write the CSV header. Called from update(), not initialize(): on the native USB
+port initialize() runs before the host opens the port and the bytes would be
+discarded, leaving you with data rows and no column names.
+****************************************/
+void Logger::writeHeader() {
+  out->print(VEHICLE_NAME);
+  out->print(",");
+  out->print(timeString);
+  out->print(",");
+  out->println(dateString);
+  HdrTime();
+  HdrRC();
+  HdrOp();
+  HdrCAN();
+  HdrDesired();
+  HdrThrottle();
+  HdrBrakes();
+  HdrSteer();
+  HdrEndLine();
+}
+
 void Logger::update() {
+  sendBootReport();  // boot diagnostics -> native USB, once a host is listening
   // CAN log emit — always on. Sensor Hub Due (and any other listener) picks up from the bus.
   CANLogTime();      // 0x701
   CANLogRC();        // 0x702
@@ -222,13 +342,12 @@ void Logger::update() {
   // Only write when the USB TX buffer has room for a whole row, so a host that
   // isn't reading can never make print() block. If there's no room, skip the
   // row entirely — the control loop always keeps running.
-  if (logMethod != 2
-#ifdef USE_NATIVE_USB
-      && SerialUSB && SerialUSB.availableForWrite() >= 200
-#endif
-     ) {
+  if (logMethod != 2 && sinkReady(serialLOG, 200)) {
+    if (!headerSent) { writeHeader(); headerSent = true; }
     TxTime();
     TxLogRC();
+    TxOp();
+    TxCAN();
     TxDesired();
     TxThrottle();
     TxBrakes();
@@ -240,11 +359,11 @@ void Logger::update() {
 Line starts with a relative time stamp in milliseconds
 *******************************************************/ 
 void Logger::HdrTime() {
-    serialLOG.print("time_ms");
+    out->print("time_ms");
 }
 void Logger::TxTime()
 {
-   serialLOG.print(millis());
+   out->print(millis());
 }
 // 0x701 LogTime — 4 bytes uint32 LE: relative time in milliseconds.
 void Logger::CANLogTime() {
@@ -259,12 +378,12 @@ Include what has been commanded by Radio Control
 *******************************************************/ 
 void Logger::HdrRC() {
   // expected order
-  // serialLOG.print(",Ch1,Ch2,Ch3,Ch4,Ch5,Ch6");
-  // serialLOG.print(",Map1,Map2,DriveMode,AutoMode,Map5,Map6");
+  // out->print(",Ch1,Ch2,Ch3,Ch4,Ch5,Ch6");
+  // out->print(",Map1,Map2,DriveMode,AutoMode,Map5,Map6");
   // What we see
 
-    serialLOG.print(",Ch1Str,Ch2ThB,Ch3,Ch4,Ch5,Ch6");
-    serialLOG.print(",MapStr,MapThB,Map3,AutoMode,Map5,EStopBtn");
+    out->print(",Ch1Str,Ch2ThB,Ch3,Ch4,Ch5,Ch6");
+    out->print(",MapStr,MapThB,Map3,AutoMode,Map5,EStopBtn");
 }
 
 void Logger::TxLogRC() {
@@ -274,13 +393,13 @@ void Logger::TxLogRC() {
   static bool first_time = true; 
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
     data = getRCtime(*myTrike, i);
-    serialLOG.print(",");
-    serialLOG.print(data);
+    out->print(",");
+    out->print(data);
   }
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
     mappd = getRCmapped(*myTrike, i);
-    serialLOG.print(",");
-    serialLOG.print(mappd);
+    out->print(",");
+    out->print(mappd);
   }
   if (first_time)
   {  // Show on serial monitor. Skipped on Bridge board: Serial (pins 0/1) connects to Router Arduino and blocks if not reading
@@ -317,15 +436,15 @@ void Logger::CANLogRC() {
 Include wthe goals, either from RC or CAN
 *******************************************************/ 
 void Logger::HdrDesired() {
-  serialLOG.print(",desired_speed_ms,desired_brake,desired_angle_DegX10");
+  out->print(",desired_speed_ms,desired_brake,desired_angle_DegX10");
 }
 void Logger::TxDesired() {
-  serialLOG.print(",");
-  serialLOG.print( getD_speed_cmPs(*myTrike));
-  serialLOG.print(",");
-  serialLOG.print( getD_brakes(*myTrike));
-  serialLOG.print(",");
-  serialLOG.print( getD_Angle(*myTrike));
+  out->print(",");
+  out->print( getD_speed_cmPs(*myTrike));
+  out->print(",");
+  out->print( getD_brakes(*myTrike));
+  out->print(",");
+  out->print( getD_Angle(*myTrike));
 }
 // 0x705 LogDesired — 6 bytes: the active source's commands (same shape as 0x350).
 //   bytes 0-1: speed int16 LE (cm/s)
@@ -345,18 +464,85 @@ void Logger::CANLogDesired() {
 /******************************************************
 Report sensors and actuators for steering
 *******************************************************/ 
+// Log the steering method actually compiled in, and the pins THAT method drives.
+// Rturn/Lturn are only meaningful for the two-wire scheme; logging them under
+// motor-control or servo just records two pins nothing ever writes.
 void Logger::HdrSteer() {
-  serialLOG.print(",current_angle,Rturn,Lturn");
+#if   (STEER_METHOD == STR_MOTOR_CONTROL)
+  out->print(",steer_method,current_angle,steer_on,steer_dir,steer_speed");
+#elif (STEER_METHOD == SRT_HBRIDGE)
+  out->print(",steer_method,current_angle,Rturn,Lturn");
+#else
+  out->print(",steer_method,current_angle,steer_pulse_us");
+#endif
 }
 
 void Logger::TxSteer() {
-  serialLOG.print(",");
-  serialLOG.print(getAngle(*myTrike));
-  serialLOG.print(",");
-  serialLOG.print(digitalRead(RIGHT_TURN_PIN));
-  serialLOG.print(",");
-  serialLOG.print(digitalRead(LEFT_TURN_PIN));
-} 
+  out->print(",");
+  out->print(STEER_METHOD_NAME);
+  out->print(",");
+  out->print(getAngle(*myTrike));
+#if   (STEER_METHOD == STR_MOTOR_CONTROL)
+  out->print(",");
+  out->print(digitalRead(STEER_ON_PIN));
+  out->print(",");
+  out->print(digitalRead(STEER_DIR_PIN));
+  out->print(",");
+  out->print(digitalRead(STEER_SPEED_PIN));
+#elif (STEER_METHOD == SRT_HBRIDGE)
+  out->print(",");
+  out->print(digitalRead(RIGHT_TURN_PIN));
+  out->print(",");
+  out->print(digitalRead(LEFT_TURN_PIN));
+#else
+  out->print(",");
+  out->print(0);   // servo pulse width — STR_PWM output not implemented yet
+#endif
+}
+
+/******************************************************
+Operator joystick and switches (alternative to the RC controller)
+*******************************************************/
+void Logger::HdrOp() {
+  out->print(",op_steer,op_throttle,op_fwd,op_mode,op_discnt,op_estop");
+}
+
+void Logger::TxOp() {
+  out->print(",");
+  out->print(analogRead(OP_STEER));      // A7 joystick X
+  out->print(",");
+  out->print(analogRead(OP_THROTTLE));   // A8 joystick Y
+  out->print(",");
+  out->print(digitalRead(OP_FWD_PIN));
+  out->print(",");
+  out->print(digitalRead(OP_MODE_PIN));
+  out->print(",");
+  out->print(digitalRead(OP_DISCNT_PIN));
+  out->print(",");
+  out->print(digitalRead(OP_ESTOP));
+}
+
+/******************************************************
+What Nav sent us over CAN (0x350 commands + 0x100 status).
+Already emitted as CAN frame 0x704; this puts it in the CSV too, so a log
+shows what was commanded even when no CAN listener was recording.
+*******************************************************/
+void Logger::HdrCAN() {
+  out->print(",nav_speed,nav_brake,nav_mode,nav_angle,nav_status");
+}
+
+void Logger::TxCAN() {
+  out->print(",");
+  out->print(getNavSpeed(*myTrike));
+  out->print(",");
+  out->print(getNavBrake(*myTrike));
+  out->print(",");
+  out->print(getNavMode(*myTrike));
+  out->print(",");
+  out->print(getNavAngle(*myTrike));
+  out->print(",");
+  out->print(getNavStatus(*myTrike));
+}
 // 0x708 LogSteer — 6 bytes: actual steer angle + L/R column sensor analog readings.
 //   bytes 0-1: actual_angle int16 LE (deg x 10)
 //   bytes 2-3: R column sensor int16 (raw analogRead, 0-1023)
@@ -374,15 +560,15 @@ void Logger::CANLogSteer() {
 Report sensors and actuators for propulsion
 *******************************************************/ 
 void Logger::HdrThrottle() {
-  serialLOG.print(",current_speed,driveMode");
+  out->print(",current_speed,driveMode");
 }
 void Logger::TxThrottle() {
-  serialLOG.print(",");
-  serialLOG.print(getSpeed(*myTrike));
-  // serialLOG.print(",");
-  // serialLOG.print(throttlePulse_ms);
-  serialLOG.print(",");
-  serialLOG.print(getDriveMode(*myTrike));
+  out->print(",");
+  out->print(getSpeed(*myTrike));
+  // out->print(",");
+  // out->print(throttlePulse_ms);
+  out->print(",");
+  out->print(getDriveMode(*myTrike));
 }
 // 0x706 LogThrottle — 4 bytes: actual_speed + throttle_pwm + drive_mode.
 //   bytes 0-1: actual_speed int16 LE (cm/s)
@@ -401,13 +587,13 @@ void Logger::CANLogThrottle() {
 Report state of the brakes
 *******************************************************/ 
 void Logger::HdrBrakes() {
-  serialLOG.print(",BrakeOn,BrakeVolt");
+  out->print(",BrakeOn,BrakeVolt");
 }
 void Logger::TxBrakes()  {
-  serialLOG.print(",");
-  serialLOG.print(digitalRead(BRAKE_ON_PIN));
-  serialLOG.print(",");
-  serialLOG.print(digitalRead(BRAKE_VOLT_PIN));
+  out->print(",");
+  out->print(digitalRead(BRAKE_ON_PIN));
+  out->print(",");
+  out->print(digitalRead(BRAKE_VOLT_PIN));
 }
 // 0x707 LogBrakes — 2 bytes: brake_on (uint8) + brake_voltage (uint8).
 void Logger::CANLogBrakes() {
@@ -422,7 +608,7 @@ void Logger::CANLogBrakes() {
 Terminate the line and indicate the part of loop time used
 *******************************************************/ 
 void Logger::HdrEndLine() {
-  serialLOG.println(",Utilization");
+  out->println(",Utilization");
 }
 void Logger::EndLine(uint32_t delayTime) {
   int PerCentBusy = ((LOOP_TIME_MS - delayTime) * 100) / LOOP_TIME_MS;
@@ -430,13 +616,12 @@ void Logger::EndLine(uint32_t delayTime) {
   // Match the guard in update(): only write when the USB TX buffer has room,
   // and never flush() — flush() blocks until a host drains the buffer, which
   // freezes the loop when nothing is reading.
-  if (logMethod != 2
-#ifdef USE_NATIVE_USB
-      && SerialUSB && SerialUSB.availableForWrite() >= 16
-#endif
-     ) {
-    serialLOG.print(",");
-    serialLOG.println(PerCentBusy);
+  if (logMethod != 2 && sinkReady(serialLOG, 16)) {
+    out->print(",");
+    out->println(PerCentBusy);
+    // Commit the row to the card. Guarded on logMethod 0 so we never flush an
+    // invalid File after the SD-to-serial fallback in initialize().
+    if (logMethod == 0) flushSink(serialLOG);
   }
 }
 

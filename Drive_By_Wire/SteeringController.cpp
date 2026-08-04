@@ -100,7 +100,7 @@ void SteeringController::SteeringPID(int input_DegX10) {
    digitalWrite(STEER_DIR_PIN, turnRight); 
    digitalWrite(STEER_ON_PIN, ST_ON);  // move
   }
-#elif (STEER_METHOD == STR_MOTOR_CONTROL)
+#elif (STEER_METHOD == SRT_HBRIDGE)
   digitalWrite(LEFT_TURN_PIN,  turnLeft  ? HIGH : LOW);
   digitalWrite(RIGHT_TURN_PIN, turnRight ? HIGH : LOW);
 #else  // pulse width

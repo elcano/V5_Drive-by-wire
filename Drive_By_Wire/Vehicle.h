@@ -72,14 +72,28 @@ public:
   // Sink state. CAN log emit is always on; SD and serial are optional additions.
   // logMethod retained for back-compat with Tx* path: 0 = SD, 1 = serial, 2 = neither.
   int logMethod;
+  // Where CSV rows actually go. File, UARTClass and Serial_ all derive from
+  // Print, so one pointer covers every sink and can be re-pointed at runtime.
+  // initialize() falls back from SD to Serial if the card fails, so a log is
+  // still produced instead of logMethod going to 2 and writing nothing.
+  Print *out;
 
 private:
+  // The CSV header is written on the first update() rather than in initialize().
+  // On the native USB port initialize() runs before the host has opened the
+  // port, and Serial_::write() discards bytes with no host attached — so a
+  // header written at boot is silently lost and you get rows with no names.
+  void writeHeader();
+  bool headerSent;
+
   void TxTime();
   void TxLogRC();
   void TxDesired();
   void TxThrottle();
   void TxBrakes();
   void TxSteer();
+  void TxOp();       // operator joystick + switches
+  void TxCAN();      // what Nav sent us over CAN
 
   // CAN log emit — one frame per method, fixed wiki IDs (0x701-0x70A).
   void CANLogTime();      // 0x701
@@ -99,11 +113,14 @@ private:
   void HdrThrottle();
   void HdrBrakes();
   void HdrSteer();
+  void HdrOp();
+  void HdrCAN();
   void HdrEndLine();
   File logfile;
   bool initRTC();
   char timeString[12];
   char dateString[12];
+  char logName[16];   // actual log file name, e.g. 07031815.CSV
   bool initSD();
   bool openSD();
  

@@ -168,8 +168,12 @@ void RC_Controller::mapValues() {
   if (elapsedTime[CH3] <  CH3_MIDLO)
     ValuesMapped[CH3] = LOW;
   driveMode = (ValuesMapped[CH3])? REVERSE_MODE: FORWARD_MODE;
-  ValuesMapped[CH5] = MAP(elapsedTime[CH5],CH5_MIN,CH5_MAX,0,100);
-  ValuesMapped[CH6] = MAP(elapsedTime[CH6],CH6_MIN,CH6_MAX,0,100);
+  // A channel with no receiver signal reads 0 us. Mapping that yields a
+  // meaningless number, so report 0 for a dead channel instead.
+  ValuesMapped[CH5] = (elapsedTime[CH5] >= MIN_RC_PULSE)
+                    ? MAP(elapsedTime[CH5],CH5_MIN,CH5_MAX,0,100) : 0;
+  ValuesMapped[CH6] = (elapsedTime[CH6] >= MIN_RC_PULSE)
+                    ? MAP(elapsedTime[CH6],CH6_MIN,CH6_MAX,0,100) : 0;
 
   if (first_time)
   {
@@ -205,11 +209,14 @@ void RC_Controller::opUpdate() {
 }
 //_______________________________________________________________________________
 long RC_Controller::getMappedValue(int channel) {
-  // for some unknown reason, this returns chaneels 4,5,6,1,2,3
-     if (channel > 2)
-       return (ValuesMapped[channel-3]);
-     else
-       return (ValuesMapped[channel+3]);
+  // Return the channel that was asked for. This used to rotate by +/-3 with the
+  // comment "for some unknown reason, this returns channels 4,5,6,1,2,3", which
+  // was wrong: mapValues() indexes ValuesMapped[] by the same CH1..CH6 constants
+  // as elapsedTime[], and getEtime() below returns unrotated. The rotation made
+  // Vehicle::updateRC() read CH5 for throttle and CH4 (which holds the AutoMode)
+  // for steering, so the steering stick had no effect on desired_angle_DegX10
+  // and desired_speed_cmPs came from a dead channel.
+  return (ValuesMapped[channel]);
 }
 unsigned long RC_Controller::getEtime(int channel) {
   return (elapsedTime[channel]);
