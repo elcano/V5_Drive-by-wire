@@ -38,7 +38,9 @@ Vehicle::Vehicle()
   last_nav_status = 0;
   measured_wheel_angle_DegX10 = 0;
 
-   if (!Can0.begin(CAN_BPS_500K))  // initialize CAN with 500kbps baud rate
+  // Can0.begin() returns the baud rate it achieved, so non-zero means success.
+  // The two messages used to be swapped, reporting "failed" on a working bus.
+  if (Can0.begin(CAN_BPS_500K))  // initialize CAN with 500kbps baud rate
   {
     Serial.println("Can0 init success");
   } else {

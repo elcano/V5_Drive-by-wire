@@ -269,12 +269,18 @@ Open the SD Card
 bool Logger::openSD()
 {
   // Name the log from the RTC so a file is identifiable by when it was recorded:
-  // MMDDHHMM.CSV, which is exactly the 8 characters FAT 8.3 allows.
+  // DDHHMMSS.CSV, which is exactly the 8 characters FAT 8.3 allows.
   // initRTC() runs before this in initialize(), so tm is already populated.
-  bool haveDate = (tm.Month >= 1 && tm.Month <= 12 && tm.Day >= 1 && tm.Day <= 31);
+  //
+  // Seconds rather than the month, because uploading then opening the serial
+  // monitor resets the Due twice about a second apart (the programming port
+  // toggles DTR on connect). At minute resolution the first boot took the dated
+  // name and the second — the run actually being recorded — fell back to LOGnn.
+  // The month is recoverable from the file's own timestamp.
+  bool haveDate = (tm.Day >= 1 && tm.Day <= 31 && tm.Hour <= 23 && tm.Minute <= 59);
   if (haveDate) {
     snprintf(logName, sizeof(logName), "%02u%02u%02u%02u.CSV",
-             tm.Month, tm.Day, tm.Hour, tm.Minute);
+             tm.Day, tm.Hour, tm.Minute, tm.Second);
   }
   // No usable clock, or a run already started in this same minute:
   // fall back to the original sequential name so we never fail to open.

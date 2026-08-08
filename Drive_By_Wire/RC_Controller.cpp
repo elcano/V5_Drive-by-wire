@@ -118,7 +118,16 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
       if (!op_estop)                                 newAutoMode = INITIALIZING;
       break;  
   }
+  // Operator present overrides the mode. The switch statement above only
+  // consults op_enabled from INITIALIZING, OPERATOR_MODE and AUTO_OP, so with
+  // an RC connected and CH4 centered the vehicle sat in MANUAL_MODE and the
+  // operator box was ignored no matter what it did. Operator input is meant to
+  // be an alternative to the RC, so whenever the operator is enabled, take it.
+  // While enabled this reasserts OPERATOR_MODE every loop, so RC CH4 cannot
+  // take control back until the operator switch is turned off.
+  if (op_enabled)                                   newAutoMode = OPERATOR_MODE;
   // if they did press estop, forget about the stuff above.
+  // Checked last, so e-stop still wins over the operator override.
   if (op_estop)                                     newAutoMode = ESTOP_BTN;
 
 switch (newAutoMode) {
@@ -162,7 +171,8 @@ void RC_Controller::mapValues() {
   if (elapsedTime[CH2] <  CH2_MIDLO) 
       ValuesMapped[CH2] = -1; // brake
   if (elapsedTime[CH2] >  CH2_MIDHI)
-      ValuesMapped[CH2] = MAP(elapsedTime[CH2],CH2_MIDHI,CH2_MAX, 0,MAX_SPEED_mmPs);
+      // cm/s, not mm/s - same unit mismatch as opUpdate() below.
+      ValuesMapped[CH2] = MAP(elapsedTime[CH2],CH2_MIDHI,CH2_MAX, 0,MAX_SPEED_cmPs);
   
   ValuesMapped[CH3] = HIGH;
   if (elapsedTime[CH3] <  CH3_MIDLO)
@@ -201,7 +211,10 @@ void RC_Controller::opUpdate() {
   if (throttle <  OP_MIDLO) 
       ValuesMapped[CH2] = -1; // brake
   if (throttle >  OP_MIDHI)
-      ValuesMapped[CH2] = MAP(throttle,OP_MIDHI,OP_MAX, 0,MAX_SPEED_mmPs);
+      // cm/s, not mm/s: Vehicle::updateRC() assigns this straight into
+      // desired_speed_cmPs, so mapping to MAX_SPEED_mmPs asked for 10x the
+      // intended top speed and gave the throttle PID an unreachable setpoint.
+      ValuesMapped[CH2] = MAP(throttle,OP_MIDHI,OP_MAX, 0,MAX_SPEED_cmPs);
   
   ValuesMapped[CH3] = digitalRead(OP_FWD_PIN)? HIGH: LOW;
   driveMode = (ValuesMapped[CH3])? REVERSE_MODE: FORWARD_MODE;

@@ -133,6 +133,12 @@ private:
   int16_t getD_Angle(Vehicle& v) {
     return(v.desired_angle_DegX10);
   }
+  // Measured wheel speed from the cyclometer, cm/s. getSpeed() below returns
+  // currentSpeed_cmPs, which actually holds the throttle DAC value that
+  // SpeedController::update() returns — not a speed.
+  int16_t getMeasuredSpeed(Vehicle& v) {
+    return(v.throttle->getMeasuredSpeed_cmPs());
+  }
   int16_t getSpeed(Vehicle& v) {
     return(v.currentSpeed_cmPs);
   }
