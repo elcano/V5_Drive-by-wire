@@ -103,7 +103,15 @@ void SpeedController::ThrottlePID(int32_t desiredValue) {
     }
     else
     {  // accelerate
-      currentThrottle = MAP(PIDThrottle,MIN_THROTTLE,MAX_THROTTLE,PID_COAST,MAX_PID_TH);
+      // The MAP arguments were the wrong way round. MIN_THROTTLE/MAX_THROTTLE
+      // are DAC counts (see the calibration table in SpeedController.h: "1.187 V:
+      // nothing 75"), not a PID output range, while PIDThrottle spans
+      // MIN_PID_TH..MAX_PID_TH from SetControlLimits(). Mapping 75..175 onto
+      // 10..255 gave currentThrottle a -149..451 range, and analogWrite() only
+      // accepts 0..255 - out-of-range values wrapped in the 12-bit DACC register
+      // instead of clamping, so a larger number could produce less throttle.
+      // Map the PID's own output range onto the calibrated DAC band instead.
+      currentThrottle = MAP(PIDThrottle,PID_COAST,MAX_PID_TH,MIN_THROTTLE,MAX_THROTTLE);
       ReleaseBrakes();
     }
    analogWrite(DAC0,currentThrottle);

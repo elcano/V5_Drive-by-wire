@@ -139,6 +139,19 @@ void Vehicle::update() {
 //*************************************************************************************
 void Vehicle::updateRC() {
   currentAutoMode = RC->updateMode(currentAutoMode);
+
+  // Record what each source is asking for, regardless of which one is selected.
+  // updateMode() has just refreshed both, and the "-1 means brake" convention
+  // here matches update() below so the columns are directly comparable.
+  long req = RC->getRCRequest(CH2);
+  rc_brake        = (req == -1) ? 100 : 0;
+  rc_speed_cmPs   = (req == -1) ? 0 : (int16_t)req;
+  rc_angle_DegX10 = (int16_t)RC->getRCRequest(CH1);
+  req = RC->getOPRequest(CH2);
+  op_brake        = (req == -1) ? 100 : 0;
+  op_speed_cmPs   = (req == -1) ? 0 : (int16_t)req;
+  op_angle_DegX10 = (int16_t)RC->getOPRequest(CH1);
+
   if (currentAutoMode == ESTOP_RC || currentAutoMode == ESTOP_OP || currentAutoMode == ESTOP_BTN)
     throttle->Stop();
   currentDriveMode = RC->getDriveMode();

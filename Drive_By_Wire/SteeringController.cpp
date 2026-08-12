@@ -10,8 +10,10 @@ SteeringController::SteeringController()
     steerPID(&steerAngle_DegX10, &SteerControl, &desiredTurn_DegX10,
              proportional_steering, integral_steering, derivative_steering, DIRECT) {
   // TWO-WIRE DIGITAL STEERING:
-  //   DBW D26 LEFT_TURN_PIN  → Router D4 : HIGH = drive steer motor LEFT
-  //   DBW D28 RIGHT_TURN_PIN → Router D2 : HIGH = drive steer motor RIGHT
+  //   LEFT_TURN_PIN  : HIGH = drive steer motor LEFT
+  //   RIGHT_TURN_PIN : HIGH = drive steer motor RIGHT
+  //   (see DBW_Pins.h for which physical pins those are on this board - they
+  //   are not D26/D28 here, as an earlier version of this comment claimed)
   //   both LOW = HOLD. Router uses digitalRead (single PIO register access,
   //   robust against CAN-interrupt contention) and dispatches into
   //   updateAngle(lTurn,rTurn). DBW maintains its own open-loop model of
@@ -95,9 +97,18 @@ void SteeringController::SteeringPID(int input_DegX10) {
     digitalWrite(STEER_ON_PIN, ST_OFF);  // no movement
   }
   else {
-   digitalWrite(STEER_SPEED_PIN, 0xFF);  // max speed. May want to slow down for small err
+   // analogWrite, not digitalWrite: STEER_SPEED_PIN is the shield's PWM A pin,
+   // and digitalWrite(pin, 0xFF) is just HIGH - full speed with no way to do
+   // anything else, which made the "slow down for small err" note below
+   // impossible to act on. 255 is the same full speed, but now scalable.
+   analogWrite(STEER_SPEED_PIN, 255);  // max speed. May want to slow down for small err
    // To do: read motor current on A0 and redeuce speed if too much power.
-   digitalWrite(STEER_DIR_PIN, turnRight); 
+   // NOTE: this writes the raw bool, so turning right drives the pin HIGH -
+   // which contradicts ST_RIGHT (= !ST_LEFT = LOW) in DBW_Pins.h. One of the
+   // two is wrong. Left as-is deliberately: picking a side without a meter on
+   // the motor controller could send the steering the wrong way. Verify on
+   // hardware before running STR_MOTOR_CONTROL, then use ST_LEFT/ST_RIGHT here.
+   digitalWrite(STEER_DIR_PIN, turnRight);
    digitalWrite(STEER_ON_PIN, ST_ON);  // move
   }
 #elif (STEER_METHOD == SRT_HBRIDGE)

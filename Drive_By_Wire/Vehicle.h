@@ -35,7 +35,13 @@ private:
   long RCMapped[RC_NUM_SIGNALS];
   static int16_t desired_speed_cmPs;
   static int16_t desired_brake;
-  static int16_t desired_angle_DegX10; 
+  static int16_t desired_angle_DegX10;
+  // What each source WOULD command if it were the selected one. Filled every
+  // loop by updateRC() whatever the mode, using the same "-1 means brake" rule
+  // that update() applies. Logged only - the vehicle acts on desired_* above,
+  // which still change only when that source is actually in control.
+  int16_t rc_speed_cmPs = 0, rc_brake = 0, rc_angle_DegX10 = 0;
+  int16_t op_speed_cmPs = 0, op_brake = 0, op_angle_DegX10 = 0;
   int16_t currentSpeed_cmPs;
   int16_t currentBrake;
   int16_t currentAngle_DegX10;
@@ -89,6 +95,7 @@ private:
   void TxTime();
   void TxLogRC();
   void TxDesired();
+  void TxRequests();
   void TxThrottle();
   void TxBrakes();
   void TxSteer();
@@ -110,6 +117,7 @@ private:
   void HdrTime();
   void HdrRC();
   void HdrDesired();
+  void HdrRequests();
   void HdrThrottle();
   void HdrBrakes();
   void HdrSteer();
@@ -133,6 +141,14 @@ private:
   int16_t getD_Angle(Vehicle& v) {
     return(v.desired_angle_DegX10);
   }
+  // What the RC and the operator joystick are each asking for, whether or not
+  // they are the selected source. See the note beside these in Vehicle.
+  int16_t getRC_speed(Vehicle& v)  { return(v.rc_speed_cmPs); }
+  int16_t getRC_brake(Vehicle& v)  { return(v.rc_brake); }
+  int16_t getRC_angle(Vehicle& v)  { return(v.rc_angle_DegX10); }
+  int16_t getOP_speed(Vehicle& v)  { return(v.op_speed_cmPs); }
+  int16_t getOP_brake(Vehicle& v)  { return(v.op_brake); }
+  int16_t getOP_angle(Vehicle& v)  { return(v.op_angle_DegX10); }
   // Measured wheel speed from the cyclometer, cm/s. getSpeed() below returns
   // currentSpeed_cmPs, which actually holds the throttle DAC value that
   // SpeedController::update() returns — not a speed.

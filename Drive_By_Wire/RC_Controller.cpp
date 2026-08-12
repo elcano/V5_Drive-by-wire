@@ -14,9 +14,9 @@ RC_Controller::RC_Controller() {
   pinMode(CH3_PIN, INPUT);
   pinMode(CH4_PIN, INPUT);
   pinMode(CH5_PIN, INPUT);
-  // CH6_PIN (D26) collides with LEFT_TURN_PIN — leave it owned by
-  // SteeringController (OUTPUT). CH6 is reserved/unused on the RC anyway.
-  // pinMode(CH6_PIN, INPUT);
+  // CH6 is now pin 42 and LEFT_TURN_PIN is 41, so the old pin-26 collision that
+  // forced CH6 to be disabled is gone and the channel can be read again.
+  pinMode(CH6_PIN, INPUT);
   pinMode(OP_MODE_PIN, INPUT_PULLUP);  // HIGH when no operator hardware = op_enabled false
   pinMode(OP_ESTOP, INPUT_PULLUP);     // HIGH when no operator hardware = no estop
   pinMode(OP_FWD_PIN, INPUT_PULLUP);  // HIGH = reverse, LOW = forward
@@ -33,8 +33,8 @@ RC_Controller::RC_Controller() {
   attachInterrupt(digitalPinToInterrupt(CH3_PIN), RC_Controller::ISR_CH3_Rise, RISING);
   attachInterrupt(digitalPinToInterrupt(CH4_PIN), RC_Controller::ISR_CH4_Rise, RISING);
   attachInterrupt(digitalPinToInterrupt(CH5_PIN), RC_Controller::ISR_CH5_Rise, RISING);
-  // CH6 ISR disabled — pin 26 is owned by SteeringController as LEFT_TURN_PIN.
-  // attachInterrupt(digitalPinToInterrupt(CH6_PIN), RC_Controller::ISR_CH6_Rise, RISING);
+  // Re-enabled, see the pinMode note above.
+  attachInterrupt(digitalPinToInterrupt(CH6_PIN), RC_Controller::ISR_CH6_Rise, RISING);
 }
 
 RC_Controller::~RC_Controller() {}
@@ -83,6 +83,14 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
     case INITIALIZING:
       if (rc_data && RC_switchMode==MANUAL_MODE)  newAutoMode = MANUAL_MODE;
       else if (op_enabled)                        newAutoMode = OPERATOR_MODE;
+      // With the RC connected and CH4 away from centre, none of the branches
+      // matched: rc_data is true so the !rc_data branch cannot fire,
+      // RC_switchMode is not MANUAL_MODE so the first cannot, and op_enabled is
+      // false when the operator box is absent. The vehicle then sat in
+      // INITIALIZING with no mode and no control until CH4 was returned to
+      // centre. Honour the switch position instead.
+      else if (rc_data && RC_switchMode==OPERATOR_MODE) newAutoMode = OPERATOR_MODE;
+      else if (rc_data && RC_switchMode==AUTO_RC)       newAutoMode = AUTO_RC;
       else if (!rc_data && !op_enabled)           newAutoMode = AUTO_RC;  // no RC/operator: CAN control
       break;
     case MANUAL_MODE:
@@ -100,13 +108,19 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
       // if (CAN_MAN || NO_CAN)                   newAutoMode = MANUAL_MODE;
       if (!rc_data ||                              
          (rc_data && elapsedTime[CH2]<CH2_MIDLO) ||
-         analogRead(OP_THROTTLE)<OP_MIDLO)     newAutoMode = ESTOP_RC;
+         analogRead(OP_THROTTLE)<OP_THROTTLE_MIDLO)     newAutoMode = ESTOP_RC;
       break;
     case AUTO_OP:
       if (op_enabled)                             newAutoMode = OPERATOR_MODE;
       // if (CAN_MAN || NO_CAN)                   newAutoMode = OPERATOR_MODE; 
+      // AUTO_RC above has this exit; AUTO_OP was missing it. Once the vehicle
+      // reached AUTO_OP the only way out was grounding OP_MODE_PIN - returning
+      // CH4 to centre did nothing and the mode stayed at 4 indefinitely, with
+      // ValuesMapped[] frozen so no RC or operator input had any effect.
+      // Placed before the e-stop test below so an e-stop still wins.
+      if (RC_switchMode==MANUAL_MODE)             newAutoMode = MANUAL_MODE;
       if (rc_data && elapsedTime[CH2]<CH2_MIDLO
-      || analogRead(OP_THROTTLE)<OP_MIDLO)      newAutoMode = ESTOP_OP;
+      || analogRead(OP_THROTTLE)<OP_THROTTLE_MIDLO)      newAutoMode = ESTOP_OP;
       break;
     case ESTOP_RC:
       if (RC_switchMode==MANUAL_MODE)               newAutoMode = INITIALIZING;
@@ -130,14 +144,31 @@ AutoMode RC_Controller::updateMode(AutoMode oldAutoMode) {
   // Checked last, so e-stop still wins over the operator override.
   if (op_estop)                                     newAutoMode = ESTOP_BTN;
 
+// Evaluate BOTH sources every loop so the log can show what each is asking for
+// even when it is not driving. Only the selected one is copied into
+// ValuesMapped[] below, so what reaches the vehicle is unchanged. The extra cost
+// is some arithmetic plus the two analogRead calls opUpdate() already made.
+  mapValues();
+  opUpdate();
+
 switch (newAutoMode) {
   case MANUAL_MODE:
-    ValuesMapped[CH4] = newAutoMode; 
-    mapValues();
+    ValuesMapped[CH1] = rcRequest[CH1];
+    ValuesMapped[CH2] = rcRequest[CH2];
+    ValuesMapped[CH3] = rcRequest[CH3];
+    ValuesMapped[CH5] = rcRequest[CH5];
+    ValuesMapped[CH6] = rcRequest[CH6];
+    driveMode = rcDriveMode;
+    ValuesMapped[CH4] = newAutoMode;   // after the copy: CH4 carries the mode
     break;
   case OPERATOR_MODE:
-    ValuesMapped[CH4] = newAutoMode; 
-    opUpdate();
+    // opUpdate() owns CH1/CH2/CH3/CH5 only; CH6 keeps its last RC value, as before.
+    ValuesMapped[CH1] = opRequest[CH1];
+    ValuesMapped[CH2] = opRequest[CH2];
+    ValuesMapped[CH3] = opRequest[CH3];
+    ValuesMapped[CH5] = opRequest[CH5];
+    driveMode = opDriveMode;
+    ValuesMapped[CH4] = newAutoMode;
     break;
 // AUTO modes will receiveCAN; INITIALIZING does nothing.
 // if (ESTOP) Stop() is called on return
@@ -160,35 +191,38 @@ void RC_Controller::mapValues() {
     }
     Serial.println(" ");
   }
+  // Writes rcRequest[], not ValuesMapped[]. updateMode() copies this across only
+  // when the RC is the selected source, so the mapping can be computed every
+  // loop for the log without touching what the vehicle acts on.
   leftTurn = elapsedTime[CH1];  // convert from unsigned to signed.
-  ValuesMapped[CH1] = 0;  // steer straight
+  rcRequest[CH1] = 0;  // steer straight
   if (elapsedTime[CH1] <  CH1_MIDLO)  // turn left
-      ValuesMapped[CH1] = MAP(leftTurn, CH1_MIN, CH1_MIDLO, MIN_LEFT_DEGx10, 0);
+      rcRequest[CH1] = MAP(leftTurn, CH1_MIN, CH1_MIDLO, MIN_LEFT_DEGx10, 0);
   if (elapsedTime[CH1] >  CH1_MIDHI)  // turn right
-      ValuesMapped[CH1] = MAP(leftTurn, CH1_MIDHI,CH1_MAX, 0, MAX_RIGHT_DEGx10);
+      rcRequest[CH1] = MAP(leftTurn, CH1_MIDHI,CH1_MAX, 0, MAX_RIGHT_DEGx10);
 
-  ValuesMapped[CH2] = 0;  // coast
-  if (elapsedTime[CH2] <  CH2_MIDLO) 
-      ValuesMapped[CH2] = -1; // brake
+  rcRequest[CH2] = 0;  // coast
+  if (elapsedTime[CH2] <  CH2_MIDLO)
+      rcRequest[CH2] = -1; // brake
   if (elapsedTime[CH2] >  CH2_MIDHI)
       // cm/s, not mm/s - same unit mismatch as opUpdate() below.
-      ValuesMapped[CH2] = MAP(elapsedTime[CH2],CH2_MIDHI,CH2_MAX, 0,MAX_SPEED_cmPs);
-  
-  ValuesMapped[CH3] = HIGH;
+      rcRequest[CH2] = MAP(elapsedTime[CH2],CH2_MIDHI,CH2_MAX, 0,MAX_SPEED_cmPs);
+
+  rcRequest[CH3] = HIGH;
   if (elapsedTime[CH3] <  CH3_MIDLO)
-    ValuesMapped[CH3] = LOW;
-  driveMode = (ValuesMapped[CH3])? REVERSE_MODE: FORWARD_MODE;
+    rcRequest[CH3] = LOW;
+  rcDriveMode = (rcRequest[CH3])? REVERSE_MODE: FORWARD_MODE;
   // A channel with no receiver signal reads 0 us. Mapping that yields a
   // meaningless number, so report 0 for a dead channel instead.
-  ValuesMapped[CH5] = (elapsedTime[CH5] >= MIN_RC_PULSE)
+  rcRequest[CH5] = (elapsedTime[CH5] >= MIN_RC_PULSE)
                     ? MAP(elapsedTime[CH5],CH5_MIN,CH5_MAX,0,100) : 0;
-  ValuesMapped[CH6] = (elapsedTime[CH6] >= MIN_RC_PULSE)
+  rcRequest[CH6] = (elapsedTime[CH6] >= MIN_RC_PULSE)
                     ? MAP(elapsedTime[CH6],CH6_MIN,CH6_MAX,0,100) : 0;
 
   if (first_time)
   {
     for (int i = 0; i < RC_NUM_SIGNALS; i++) {
-      Serial.print(ValuesMapped[i]);
+      Serial.print(rcRequest[i]);
       Serial.print(", ");
     }
     Serial.println(" ");
@@ -197,28 +231,33 @@ void RC_Controller::mapValues() {
 }
 //_______________________________________________________________________________
 void RC_Controller::opUpdate() {
-//since we are in OPERATOR MODE, fill in mapped values
-  long turn = analogRead(OP_STEER); 
+// Fill in the operator's mapped values. Writes opRequest[], not ValuesMapped[] -
+// updateMode() copies it across only when the operator is the selected source,
+// so this runs every loop for the log without affecting what the vehicle does.
+  long turn = analogRead(OP_STEER);
   long throttle = analogRead(OP_THROTTLE);
 
-  ValuesMapped[CH1] = 0;  // steer straight
-  if (turn <  OP_MIDLO)  // turn left
-      ValuesMapped[CH1] = MAP(turn, OP_MIN, OP_MIDLO, MIN_LEFT_DEGx10, 0);
-  if (turn >  OP_MIDHI)  // turn right
-      ValuesMapped[CH1] = MAP(turn, OP_MIDHI,OP_MAX, 0, MAX_RIGHT_DEGx10);
+  opRequest[CH1] = 0;  // steer straight
+  // Steering uses its own, wider deadband - see the note in Settings.h. The
+  // throttle axis drags this one with it, so a band sized for throttle alone
+  // let a deliberate throttle push produce unintended steering.
+  if (turn <  OP_STEER_MIDLO)  // turn left
+      opRequest[CH1] = MAP(turn, OP_MIN, OP_STEER_MIDLO, MIN_LEFT_DEGx10, 0);
+  if (turn >  OP_STEER_MIDHI)  // turn right
+      opRequest[CH1] = MAP(turn, OP_STEER_MIDHI,OP_MAX, 0, MAX_RIGHT_DEGx10);
 
-  ValuesMapped[CH2] = 0;  // coast
-  if (throttle <  OP_MIDLO) 
-      ValuesMapped[CH2] = -1; // brake
-  if (throttle >  OP_MIDHI)
+  opRequest[CH2] = 0;  // coast
+  if (throttle <  OP_THROTTLE_MIDLO)
+      opRequest[CH2] = -1; // brake
+  if (throttle >  OP_THROTTLE_MIDHI)
       // cm/s, not mm/s: Vehicle::updateRC() assigns this straight into
       // desired_speed_cmPs, so mapping to MAX_SPEED_mmPs asked for 10x the
       // intended top speed and gave the throttle PID an unreachable setpoint.
-      ValuesMapped[CH2] = MAP(throttle,OP_MIDHI,OP_MAX, 0,MAX_SPEED_cmPs);
-  
-  ValuesMapped[CH3] = digitalRead(OP_FWD_PIN)? HIGH: LOW;
-  driveMode = (ValuesMapped[CH3])? REVERSE_MODE: FORWARD_MODE;
-  ValuesMapped[CH5] = digitalRead(OP_DISCNT_PIN)? HIGH: LOW;
+      opRequest[CH2] = MAP(throttle,OP_THROTTLE_MIDHI,OP_MAX, 0,MAX_SPEED_cmPs);
+
+  opRequest[CH3] = digitalRead(OP_FWD_PIN)? HIGH: LOW;
+  opDriveMode = (opRequest[CH3])? REVERSE_MODE: FORWARD_MODE;
+  opRequest[CH5] = digitalRead(OP_DISCNT_PIN)? HIGH: LOW;
 }
 //_______________________________________________________________________________
 long RC_Controller::getMappedValue(int channel) {

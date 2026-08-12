@@ -321,6 +321,7 @@ void Logger::writeHeader() {
   HdrRC();
   HdrOp();
   HdrCAN();
+  HdrRequests();
   HdrDesired();
   HdrThrottle();
   HdrBrakes();
@@ -354,6 +355,7 @@ void Logger::update() {
     TxLogRC();
     TxOp();
     TxCAN();
+    TxRequests();
     TxDesired();
     TxThrottle();
     TxBrakes();
@@ -389,7 +391,10 @@ void Logger::HdrRC() {
   // What we see
 
     out->print(",Ch1Str,Ch2ThB,Ch3,Ch4,Ch5,Ch6");
-    out->print(",MapStr,MapThB,Map3,AutoMode,Map5,EStopBtn");
+    // Sixth column is ValuesMapped[CH6], the reserved analog channel scaled
+    // 0..100 - not an e-stop button. It was labelled EStopBtn, which made a
+    // routine CH6 sweep look like someone hammering the e-stop.
+    out->print(",MapStr,MapThB,Map3,AutoMode,Map5,Map6");
 }
 
 void Logger::TxLogRC() {
@@ -403,7 +408,12 @@ void Logger::TxLogRC() {
     out->print(data);
   }
   for (i = 0; i < RC_NUM_SIGNALS; i++) {
-    mappd = getRCmapped(*myTrike, i);
+    // The AutoMode column is ValuesMapped[CH4], which RC_Controller only assigns
+    // in its MANUAL_MODE and OPERATOR_MODE branches - modes 3..7 (AUTO_RC,
+    // AUTO_OP and the e-stop states) hit `default:` and leave the previous value
+    // in place. So the column could only ever show 0, 1 or 2 and silently went
+    // stale everywhere else. Log Vehicle's actual mode for that position.
+    mappd = (i == CH4) ? getAutoMode(*myTrike) : getRCmapped(*myTrike, i);
     out->print(",");
     out->print(mappd);
   }
@@ -441,8 +451,38 @@ void Logger::CANLogRC() {
 /******************************************************
 Include wthe goals, either from RC or CAN
 *******************************************************/ 
+/******************************************************
+What each control source is ASKING for, whatever the mode.
+
+The desired_* group that follows is what the vehicle actually acts on, and it
+only changes while that source is selected - so in AUTO_OP, ESTOP_* or
+INITIALIZING it freezes and tells you nothing. These six columns are computed
+every loop from both sources, so you can see what the RC stick and the operator
+joystick each want even when neither is in control. Compare them against
+desired_* to see which source won, and against AutoMode to see why.
+*******************************************************/
+void Logger::HdrRequests() {
+  out->print(",rc_speed_cmPs,rc_brake,rc_angle_DegX10");
+  out->print(",op_speed_cmPs,op_brake,op_angle_DegX10");
+}
+void Logger::TxRequests() {
+  out->print(",");
+  out->print(getRC_speed(*myTrike));
+  out->print(",");
+  out->print(getRC_brake(*myTrike));
+  out->print(",");
+  out->print(getRC_angle(*myTrike));
+  out->print(",");
+  out->print(getOP_speed(*myTrike));
+  out->print(",");
+  out->print(getOP_brake(*myTrike));
+  out->print(",");
+  out->print(getOP_angle(*myTrike));
+}
 void Logger::HdrDesired() {
-  out->print(",desired_speed_ms,desired_brake,desired_angle_DegX10");
+  // cmPs, not ms: the value is getD_speed_cmPs(), and MAX_SPEED_cmPs is the
+  // scale RC_Controller maps CH2 onto.
+  out->print(",desired_speed_cmPs,desired_brake,desired_angle_DegX10");
 }
 void Logger::TxDesired() {
   out->print(",");
@@ -566,13 +606,18 @@ void Logger::CANLogSteer() {
 Report sensors and actuators for propulsion
 *******************************************************/ 
 void Logger::HdrThrottle() {
-  out->print(",current_speed,driveMode");
+  // throttle_pwm, not "current_speed": SpeedController::update() returns
+  // currentThrottle (the value written to DAC0), and Vehicle assigns it into
+  // currentSpeed_cmPs. measured_speed is the real wheel speed from the
+  // odometer, which was previously not logged at all - so there was no way to
+  // see what the throttle PID was actually reacting to.
+  out->print(",throttle_pwm,measured_speed,driveMode");
 }
 void Logger::TxThrottle() {
   out->print(",");
-  out->print(getSpeed(*myTrike));
-  // out->print(",");
-  // out->print(throttlePulse_ms);
+  out->print(getSpeed(*myTrike));            // throttle_pwm (DAC value)
+  out->print(",");
+  out->print(getMeasuredSpeed(*myTrike));    // measured_speed, cm/s from odometer
   out->print(",");
   out->print(getDriveMode(*myTrike));
 }
@@ -596,18 +641,23 @@ void Logger::HdrBrakes() {
   out->print(",BrakeOn,BrakeVolt");
 }
 void Logger::TxBrakes()  {
+  // Report the logical state, not the raw pin. RELAYInversion makes ON_BR LOW,
+  // so a bare digitalRead printed 1 with the brakes released and 0 with them
+  // engaged - the columns read backwards from their names. BrakeVolt is 1 when
+  // the 24V pull-in relay is active, 0 while holding on 12V.
   out->print(",");
-  out->print(digitalRead(BRAKE_ON_PIN));
+  out->print(digitalRead(BRAKE_ON_PIN)   == ON_BR);
   out->print(",");
-  out->print(digitalRead(BRAKE_VOLT_PIN));
+  out->print(digitalRead(BRAKE_VOLT_PIN) == ON_BR);
 }
 // 0x707 LogBrakes — 2 bytes: brake_on (uint8) + brake_voltage (uint8).
 void Logger::CANLogBrakes() {
   CAN_FRAME* outCAN = getCAN(*myTrike);
   outCAN->id = LogBrakes_CANID;
   outCAN->length = 2;
-  outCAN->data.uint8[0] = (uint8_t)digitalRead(BRAKE_ON_PIN);
-  outCAN->data.uint8[1] = (uint8_t)digitalRead(BRAKE_VOLT_PIN);
+  // Same inversion as TxBrakes(): send the logical state, not the raw pin.
+  outCAN->data.uint8[0] = (uint8_t)(digitalRead(BRAKE_ON_PIN)   == ON_BR);
+  outCAN->data.uint8[1] = (uint8_t)(digitalRead(BRAKE_VOLT_PIN) == ON_BR);
   myTrike->sendCan();
 }
 /******************************************************
