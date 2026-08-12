@@ -12,7 +12,10 @@
 //Version can be 1,3, 4, 5; LLB = Low Level Board = Drive By Wire; 1,2,3 no longer supported.
 #define DBWversion 5
 
-#define MAP(val,dlo,dhi,nlo,nhi) ((nlo) + (((val-(dlo))*((nhi)-(nlo)))/((dhi)-(dlo))))
+// Cast to long before subtracting: callers pass unsigned long (RC elapsedTime[]),
+// and when val < dlo the unsigned subtraction wraps to ~4.29e9 instead of going
+// negative. A dead RC channel reading 0 us used to map to 4294867 this way.
+#define MAP(val,dlo,dhi,nlo,nhi) ((nlo) + ((((long)(val)-(long)(dlo))*((nhi)-(nlo)))/((dhi)-(dlo))))
 
 // serial goes to serial monitor; other settings can have another microprocessor do the logging
 // serial1 connects to router on Bridge; 
@@ -73,26 +76,39 @@
   // Command to e-bike controller to drive in reverse
   #define REVERSE_PIN       24
 #else
- #define STEERING_CH1_PIN   42
+ // BOARD-SPECIFIC WIRING - check this against your own receiver before using.
+ // The RC receiver plugs onto J4 as one 18-pin block and is seated in reverse
+ // order (RC1 on J4:6 ... RC6 on J4:1). It cannot be rotated: the block carries
+ // signal/+5V/GND per channel, so turning it round would put +5V on the signal
+ // pins. Until the receiver is re-seated with individual servo leads, remap the
+ // channel pins to match the cable as it actually is.
+ //
+ //   RC1 -> pin 26   RC2 -> pin 31   RC3 -> pin 32
+ //   RC4 -> pin 25   RC5 -> pin 46   RC6 -> pin 42
+ //
+ // Determined by moving one control at a time and noting which column responded.
+ #define STEERING_CH1_PIN   26   // was 42
  #define RTS2               23
- #define CTS2               24  
+ #define CTS2               24
  #define REVERSE_PIN        36
 #endif
-#define THROTTLE_BR_CH2_PIN 46
-#define CH3_PIN             32
-#define CH4_PIN             25
-#define CH5_PIN             31
-#define CH6_PIN             26
+#define THROTTLE_BR_CH2_PIN 31   // was 46
+#define CH3_PIN             32   // RC3 already lands here
+#define CH4_PIN             25   // RC4 already lands here
+#define CH5_PIN             46   // was 31
+#define CH6_PIN             42   // was 26
 // Chip select pin for the SD card Reader
 #define SD_CS_PIN           33
 // Chip select if using an SPI angle sensor
 #define ANG_CS_PIN          39
-// Closed-loop steering: two-wire digital direction signals (per Minhee's bridge wiring).
-//   DBW pin 26 (L_TURN) → Router D4  (digitalWrite HIGH while turning left)
-//   DBW pin 28 (R_TURN) → Router D2  (digitalWrite HIGH while turning right)
-// Pin 26 collides with CH6_PIN — RC_Controller's CH6 init must stay disabled.
-#define LEFT_TURN_PIN       26
-#define RIGHT_TURN_PIN      28
+// BOARD-SPECIFIC WIRING - differs between the Bridge and a standalone v5 board.
+// Bridge wiring puts L_TURN/R_TURN on pins 26/28 (-> Router D4/D2), but the DBW
+// v5 board routes them to J3:7 = pin 41 and J3:6 = pin 48 per the pin map. On
+// this board 26/28 are wrong anyway, and pin 26 is needed for the RC steering
+// input above, so use the board's own pins here.
+//   Bridge values were:  LEFT_TURN_PIN 26, RIGHT_TURN_PIN 28
+#define LEFT_TURN_PIN       41   // v5 board J3:7
+#define RIGHT_TURN_PIN      48   // v5 board J3:6
 // STEER_PULSE_PIN was the old servo-pulse output; bridge uses the two-wire
 // L_TURN/R_TURN scheme above instead. Aliased to RIGHT_TURN_PIN so any
 // legacy reference still resolves to a valid pin.
@@ -117,7 +133,9 @@
 // Reserved for regenerative braking
 #define REGEN_PIN            43 
 // Restored to pin 44 now that steering uses the proper L_TURN/R_TURN wires
-// (DBW D26/D28). The Router brake wire (DBW D44 → Router D48) is the live path.
+// (LEFT_TURN_PIN/RIGHT_TURN_PIN above - pins 41/48 on this board, see the
+// workaround note there). The Router brake wire (DBW D44 → Router D48) is the
+// live path.
 #define BRAKE_ON_PIN         44
 // Brakes, have relays for both on/off as well as selecting 12/24v power.
 #define BRAKE_VOLT_PIN       40

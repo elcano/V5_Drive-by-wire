@@ -152,11 +152,23 @@ RC Controller: hardware pulse limits in microseconds
 #define CH6_MIDHI 1505
 /*=======================================================================
 Operator: analog in on 0 -1023 scale
+
+Steering and throttle have SEPARATE deadbands. They used to share OP_MIDLO/
+OP_MIDHI, which made it impossible to give steering the wider band it needs:
+pushing the throttle axis drags the steering axis with it, so the operator
+gets unintentional steering while accelerating or braking. Steering needs a
+band wide enough to absorb that cross-axis pull plus however far the joystick
+centre wanders between power cycles; throttle only has to absorb the wander.
+
+Measure your own joystick before trusting these: log op_steer and op_throttle
+at rest over several power cycles, then again while holding full throttle.
 */
 #define OP_MIN    0
-#define OP_MIDLO  500
-#define OP_MIDHI  523
 #define OP_MAX    1023
+#define OP_STEER_MIDLO     410
+#define OP_STEER_MIDHI     620
+#define OP_THROTTLE_MIDLO  460
+#define OP_THROTTLE_MIDHI  575
 
 /*=======================================================================
 Serial logging output — choose one in your local Settings.h:

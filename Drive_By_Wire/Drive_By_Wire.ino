@@ -19,6 +19,12 @@ void setup() {
   digitalWrite(RED_LED_PIN,HIGH);
   digitalWrite(GREEN_LED_PIN,HIGH);
   digitalWrite(BLUE_LED_PIN,HIGH);
+  // Always begin Serial, even on the Bridge where it is not cabled to a PC.
+  // Logger's initRTC()/initSD()/openSD() print to Serial unconditionally, and
+  // UARTClass::write() spin-locks forever once its 128-byte buffer fills if
+  // begin() was never called — the TX interrupt that drains it is enabled by
+  // begin(). That would hang setup() and loop() would never run.
+  Serial.begin(baud);
 #ifdef USE_NATIVE_USB
   SerialUSB.begin(baud);
   // Wait up to 500 ms for a serial monitor; proceed regardless so automated
@@ -26,8 +32,6 @@ void setup() {
   // for a monitor that was open before reset; cold-boot without monitor
   // starts DBW in < 500 ms so it's ready before the first test assertion.
   { uint32_t t = millis(); while (!SerialUSB && (millis() - t) < 500); }
-#else
-  Serial.begin(baud);
 #endif
   myTrike = new Vehicle();
   Log = new Logger();

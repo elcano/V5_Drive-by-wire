@@ -38,7 +38,9 @@ Vehicle::Vehicle()
   last_nav_status = 0;
   measured_wheel_angle_DegX10 = 0;
 
-   if (!Can0.begin(CAN_BPS_500K))  // initialize CAN with 500kbps baud rate
+  // Can0.begin() returns the baud rate it achieved, so non-zero means success.
+  // The two messages used to be swapped, reporting "failed" on a working bus.
+  if (Can0.begin(CAN_BPS_500K))  // initialize CAN with 500kbps baud rate
   {
     Serial.println("Can0 init success");
   } else {
@@ -137,6 +139,19 @@ void Vehicle::update() {
 //*************************************************************************************
 void Vehicle::updateRC() {
   currentAutoMode = RC->updateMode(currentAutoMode);
+
+  // Record what each source is asking for, regardless of which one is selected.
+  // updateMode() has just refreshed both, and the "-1 means brake" convention
+  // here matches update() below so the columns are directly comparable.
+  long req = RC->getRCRequest(CH2);
+  rc_brake        = (req == -1) ? 100 : 0;
+  rc_speed_cmPs   = (req == -1) ? 0 : (int16_t)req;
+  rc_angle_DegX10 = (int16_t)RC->getRCRequest(CH1);
+  req = RC->getOPRequest(CH2);
+  op_brake        = (req == -1) ? 100 : 0;
+  op_speed_cmPs   = (req == -1) ? 0 : (int16_t)req;
+  op_angle_DegX10 = (int16_t)RC->getOPRequest(CH1);
+
   if (currentAutoMode == ESTOP_RC || currentAutoMode == ESTOP_OP || currentAutoMode == ESTOP_BTN)
     throttle->Stop();
   currentDriveMode = RC->getDriveMode();

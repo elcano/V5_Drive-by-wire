@@ -47,6 +47,9 @@ private:
 public:
   SpeedController();
   ~SpeedController();
+  // Speed measured from the odometer/cyclometer ticks, cm/s. This is the real
+  // wheel speed. Note update() returns currentThrottle (a DAC value), NOT this.
+  int16_t getMeasuredSpeed_cmPs() const { return (int16_t)speedCyclometer_cmPs; }
   void Stop();
   // returns currentThrottle
   int32_t update(int32_t dSpeed, DriveMode mode);
