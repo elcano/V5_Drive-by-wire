@@ -11,10 +11,10 @@ Digital pin 47,IRPT_WHEEL,,J10:1,,"Wheel click interrupt (""odometer""). Once pe
 Ground,Ground,,J10:2,,,
 Digital pin 30,DBW_LED,,J10:3,,Debug,D30
 Digital pin 09,A_Brake,,J10:4,,Hold or change current steering,D09
-Digital pin 51,Red LED,,J11:1->via 150 ê ,,Jx:3 is ground,
-Digital pin 52,Green LED,,J11:2_>via 150 ê ,,For multicolor Mode:  Grn=manual; yel=auto,
+Digital pin 51,Red LED,,J11:1->via 150 ? ,,Jx:3 is ground,
+Digital pin 52,Green LED,,J11:2_>via 150 ? ,,For multicolor Mode:  Grn=manual; yel=auto,
 Ground,Ground,,J11:3,,,
-Digital pin 53,Blue LED,,J11:4->via 150 ê ,,blu=op; red=estop; white=initial,
+Digital pin 53,Blue LED,,J11:4->via 150 ? ,,blu=op; red=estop; white=initial,
 CANRX,CANRX,CANH,J12:1,,Chip converts CAN Rx/Tx to Hi/LO,CANH
 CANTX,CANTX,CANL,J12:2,,Chip  converts CAN Rx/Tx to Hi/LO,CANL
 Ground,Ground,,J12:3,,,
@@ -47,12 +47,12 @@ ICSP 4,MOSI,Jumper B,J3:4,,Right sensor return or out to SD card,
 Digital pin 48,R_TURN,,J3:6,,"Right turn with L_TURN lo, R_TURN hi",D52
 Digital pin 48,STEER_PWM,,J3:6,,Pin used to steer the vehicle with a pulse,D52
 Digital pin 41,L_TURN,,J3:7,,"left turn with L_TURN hi, R_TURN lo",D43
-Digital pin 42,STEER_CH1,CH1,J4:6,,RC for manual steering as digital PWM,D48
-Digital pin 46,THROTTLE_CH2,CH2,J4:5,,RC for manual throttle as digital PWM,D51
+Digital pin 26,STEER_CH1,CH1 was 42,J4:1,,RC for manual steering as digital PWM,D48
+Digital pin 31,THROTTLE_CH2,CH2 was 46,J4:2,,RC for manual throttle as digital PWM,D51
 Digital pin 25,Fwd/Reverse,CH3,J4:3,,RC Fwd/reverse requested,
 Digital pin 32,Man/Auto/Op,Ch4,J4:4,,RC switch to Auto,D39
-Digital pin 31,Disconnect,CH5,J4:2,,RC Request to raise gate,
-Digital pin 26,CH6,CH6,J4:1,,RC Reserved,D04
+Digital pin 46,Disconnect,CH5 was 31,J4:5,,RC Request to raise gate,
+Digital pin  42,CH6,CH6 was 26,J4:6,,RC Reserved,D04
 3.3V,3.3V,,J5,,,
 Ground,Ground,,J6,,,
 Ground,Ground,RTC,J7:1,,,
