@@ -48,6 +48,7 @@ private:
   DriveMode currentDriveMode;
   AutoMode currentAutoMode;
   AutoMode  int2Auto(int);
+  bool FirstTime; // on initialization, check for actuator test
   bool canActive;  // true when CAN commands are being received
   // Buffered last values received from Nav (for 0x704 Log_auto emit).
   // The 0x350 mode byte is informational; DBW arbitrates its own state.

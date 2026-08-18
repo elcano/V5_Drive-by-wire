@@ -1,3 +1,40 @@
+Operation
+State is shown by a color-changing LED
+White: Initial
+Green: Manual - RC is in charge
+Blue: Operate - Trike operator is in charge
+Yellow: Auto RC - Nav computer is in charge, initiated from Manual
+Purple: Auto Op - Nav computer is in charge, initiated from Operate
+Red: Emergency Stop
+Cyan: Test mode
+
+There may not be an operator on board and the RC unit may not be used, but either the operator or RC needs to be present.
+Emergency Stop can be applied in several ways:
+1) The E-stop button on the trike is pressed.
+2) In Auto RC, input from RC or operator is ignored, except that applying the brake is an e-stop. Losing communication with RC is an e-stop.
+3) In Auto Op, input from RC or operator is ignored, except that applying the brake is an e-stop.
+Releasing e-stop reverts to Initial state. E-stop is removed by
+1) If the e-stop button was pressed, it must be released.
+2) If the e-stop comes from the RC brake, the mode select button on RC will be in the Auto position. Return it to Manual to release e-stop.
+3) If the e-stop comes from the Op brake, the mode select button on Op will be in the Auto position. Return it to Manual to release e-stop.
+
+Channel 3 of the RC is a switch that is normally off. When pressed it lights a blue LED on the RC unit. The switch has two functions:
+1) if no other control has yet been applied, test mode is started, where the brakes, steering and throttle are tested. For test mode, assure that the rear wheel is in a roller or off the ground. Test can only be done once. For test mode, turn on the RC unit and press the test button before turning on the trike.
+2) If any control has been actuated, the button selects reverse mode.
+There is a blue LED switch on the operator control that has the same function.
+
+Channel 4 of the RC is a three-position switch. In the middle position, the trike is in the manual mode. Moving it to the side goes to Operate or Auto RC state. 
+There is a green LED switch on the operator console. It should be off for operation from RC. When on, the operator is in charge as long as the RC switch is in Op. If the operator is controlling the trike, they can put it into auto mode by switching off.
+
+Channel 5 of the RC or the amber operator switch will be used to raise the gate on the couple and disconnect vehicles.
+
+Channel 1 of the RC is for steering. The operator steers by moving the joystick left or right.
+
+Channel 2 of RC controls speed. Pulling the trigger applies the brakes. Pushing the trigger out sets the desired speed according to the trigger position. For operator control, pulling the joystick towards oneself applies brakes, pushing ot away sets a speed.
+
+
+The trike comes up in the Initial state.
+
 State transitions
 Switches
 RCMode: AUTO <-> MAN <-> OP

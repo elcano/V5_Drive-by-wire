@@ -163,17 +163,17 @@
 // Number of RC channels
 #define RC_NUM_SIGNALS 6
 // RC Channels
-// Steering
+// 1: Steering
 #define CH1 0  
-// Thottle and brake
+// 2: Thottle and brake
 #define CH2 1 
-// two-position with light: Forward / Reverse
+// 3: two-position Forward (off)  / Reverse (lit) ; test mode if lit on vehicle start
 #define CH3 2 
-// three-position: Control from RC / Operator / CAN
+// 4: three-position: Control from Operator/ RC / CAN
 #define CH4 3
-// Analog: Disconnect coupler
+// 5: Analog: Disconnect coupler
 #define CH5 4
-// Analog; reerved
+// 6: Analog; reerved
 #define CH6 5
 
 enum DriveMode {

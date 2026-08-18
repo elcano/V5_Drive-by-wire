@@ -54,6 +54,7 @@ public:
   // returns currentThrottle
   int32_t update(int32_t dSpeed, DriveMode mode);
   void ReleaseBrakes();
+  void test();
  };
 //_______________Brakes___________________________
 /* Solenoid controlled Brakes.

@@ -3,10 +3,7 @@
 #include <Servo.h>
 #include "PID.h"
 
-// STEER_SERVO true -> use pulse on linear servo STEER_PULSE_PIN; 
-// STEER_SERVO false -> use motor controller board, motor A
-#define STEER_SERVO true
-
+/* STEER_METHOD can be STR_HBRIDGE, STR_PWM or STR_MOTOR_CONTROL*/
 
 class SteeringController {
 private:
@@ -51,5 +48,6 @@ public:
 
   // Optional use of right sensor (if supported)
   int computeAngleRight();
+  void test();
 };
 

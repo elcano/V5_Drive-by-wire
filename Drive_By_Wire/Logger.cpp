@@ -28,7 +28,7 @@ extern Vehicle *myTrike;
 /* Name of the steering method compiled in, so a log says which mode produced it. */
 #if   (STEER_METHOD == STR_MOTOR_CONTROL)
   #define STEER_METHOD_NAME "motor_control"
-#elif (STEER_METHOD == SRT_HBRIDGE)
+#elif (STEER_METHOD == STR_HBRIDGE)
   #define STEER_METHOD_NAME "hbridge_2wire"
 #else
   #define STEER_METHOD_NAME "servo_pwm"
@@ -516,7 +516,7 @@ Report sensors and actuators for steering
 void Logger::HdrSteer() {
 #if   (STEER_METHOD == STR_MOTOR_CONTROL)
   out->print(",steer_method,current_angle,steer_on,steer_dir,steer_speed");
-#elif (STEER_METHOD == SRT_HBRIDGE)
+#elif (STEER_METHOD == STR_HBRIDGE)
   out->print(",steer_method,current_angle,Rturn,Lturn");
 #else
   out->print(",steer_method,current_angle,steer_pulse_us");
@@ -535,7 +535,7 @@ void Logger::TxSteer() {
   out->print(digitalRead(STEER_DIR_PIN));
   out->print(",");
   out->print(digitalRead(STEER_SPEED_PIN));
-#elif (STEER_METHOD == SRT_HBRIDGE)
+#elif (STEER_METHOD == STR_HBRIDGE)
   out->print(",");
   out->print(digitalRead(RIGHT_TURN_PIN));
   out->print(",");

@@ -9,6 +9,9 @@ SteeringController::SteeringController()
   : steerAngle_DegX10(0), SteerControl(0), desiredTurn_DegX10(0),
     steerPID(&steerAngle_DegX10, &SteerControl, &desiredTurn_DegX10,
              proportional_steering, integral_steering, derivative_steering, DIRECT) {
+switch (STEER_METHOD)
+{
+case STR_HBRIDGE:
   // TWO-WIRE DIGITAL STEERING:
   //   LEFT_TURN_PIN  : HIGH = drive steer motor LEFT
   //   RIGHT_TURN_PIN : HIGH = drive steer motor RIGHT
@@ -19,22 +22,33 @@ SteeringController::SteeringController()
   //   updateAngle(lTurn,rTurn). DBW maintains its own open-loop model of
   //   Router's angle_tenths (see update()) since the L_SENSE/R_SENSE wires
   //   for analog feedback don't carry signal on this bridge.
-  pinMode(LEFT_TURN_PIN,  OUTPUT);
-  pinMode(RIGHT_TURN_PIN, OUTPUT);
-  digitalWrite(LEFT_TURN_PIN,  LOW);
-  digitalWrite(RIGHT_TURN_PIN, LOW);
+    pinMode(LEFT_TURN_PIN,  OUTPUT);
+    pinMode(RIGHT_TURN_PIN, OUTPUT);
+    digitalWrite(LEFT_TURN_PIN,  LOW);
+    digitalWrite(RIGHT_TURN_PIN, LOW);
+    break;
+
+  case STR_PWM:
+  // To do: Send STEER_PULSE_PIN high, and set a timing interrupt to take it low at 1500 us. to center the steering
+  // PID controller is not used. 
+    steerPID.SetControlLimits(MIN_LEFT_US, MAX_RIGHT_US);
+    break;
+
+  case STR_MOTOR_CONTROL:
+    // for motor control board
+    pinMode(STEER_SPEED_PIN,OUTPUT); // PWM A  
+    pinMode(STEER_ON_PIN,OUTPUT);    // Brake A
+    pinMode(STEER_DIR_PIN,OUTPUT);   // Dir A
+    digitalWrite(STEER_ON_PIN, ST_OFF);
+    analogWrite(STEER_SPEED_PIN, 100);   // slowr speed for initial centering
+    // analogWrite(STEER_SPEED_PIN, 255);     // fast steer control
+  }
+
   steerPID.SetSampleTime(PID_SAMPLE_TIME);
   steerPID.SetMode(AUTOMATIC);
-  steerPID.SetControlLimits(MIN_LEFT_US, MAX_RIGHT_US);
-  // for motor control board
-  pinMode(STEER_SPEED_PIN,OUTPUT); // PWM A  
-  pinMode(STEER_ON_PIN,OUTPUT);    // Brake A
-  pinMode(STEER_DIR_PIN,OUTPUT);   // Dir A
-  digitalWrite(STEER_ON_PIN, ST_OFF);
-  analogWrite(STEER_SPEED_PIN, 100);   // slowr speed for initial centering
    
   update(0);    // point wheels straight ahead
-  analogWrite(STEER_SPEED_PIN, 255);     // fast steer control
+ 
    if (DEBUG) {
     Serial.println("Steering Setup Complete");
   }
@@ -111,7 +125,7 @@ void SteeringController::SteeringPID(int input_DegX10) {
    digitalWrite(STEER_DIR_PIN, turnRight);
    digitalWrite(STEER_ON_PIN, ST_ON);  // move
   }
-#elif (STEER_METHOD == SRT_HBRIDGE)
+#elif (STEER_METHOD == STR_HBRIDGE)
   digitalWrite(LEFT_TURN_PIN,  turnLeft  ? HIGH : LOW);
   digitalWrite(RIGHT_TURN_PIN, turnRight ? HIGH : LOW);
 #else  // pulse width
@@ -136,7 +150,7 @@ void SteeringController::SteeringPID(int input_DegX10) {
   }
 }
 /*-----------------------------------------------------------------------------------*/
-/*-----------------------------------------------------------------------------------*/
+// Get data from sensor on left steering column.
 int SteeringController::computeAngleLeft() {
   int val = analogRead(L_SENSE_PIN);
   int degreeX10;
@@ -160,6 +174,7 @@ int SteeringController::computeAngleLeft() {
   return degreeX10;
 }
 /*-----------------------------------------------------------------------------------*/
+// Get data from sensor on right steering column.
 int SteeringController::computeAngleRight() {
   int val = analogRead(R_SENSE_PIN);
   int degreeX10;  
@@ -185,3 +200,70 @@ int SteeringController::computeAngleRight() {
 int SteeringController::getSteeringMode() {
   return steeringMode;
 }
+/*-----------------------------------------------------------------------------------*/
+// Move the wheels to center, then left, right, center.
+// Use left sensor for feedback.
+void SteeringController::test() {
+  computeAngleLeft();  // left turn if currentAngle_DegX10 < 0
+  switch (STEER_METHOD)
+  {
+  case STR_HBRIDGE:
+  // TWO-WIRE DIGITAL STEERING:
+    digitalWrite(LEFT_TURN_PIN,  LOW);
+    digitalWrite(RIGHT_TURN_PIN, LOW);
+   if (currentAngle_DegX10 < 0)
+      while (computeAngleLeft() < 0)
+        digitalWrite(RIGHT_TURN_PIN, HIGH);  // move to center
+    else  
+     while (computeAngleLeft() > 0)
+        digitalWrite(LEFT_TURN_PIN, HIGH);  // move to center
+
+    // continue to move to sides and back. No one is currently using this steering modde.
+    break;
+
+  case STR_PWM:
+  // To do: Send STEER_PULSE_PIN high, and set a timing interrupt to take it low at 1500 us. to center the steering
+  // then MIN_LEFT_US  for left, MAX_RIGHT_U for right, 1500 to center.
+    break;
+
+  case STR_MOTOR_CONTROL:
+   // for motor control board
+    analogWrite(STEER_SPEED_PIN, 100);   // slowr speed for initial centering
+    digitalWrite (STEER_DIR_PIN, computeAngleLeft() < 0 ? ST_LEFT: ST_RIGHT);
+    if (currentAngle_DegX10 < 0)
+    {
+      digitalWrite (STEER_ON_PIN, ST_ON);
+      while (computeAngleLeft() < 0) ;
+      digitalWrite (STEER_ON_PIN, ST_OFF);
+    }
+    digitalWrite (STEER_DIR_PIN, ST_RIGHT);
+    if (currentAngle_DegX10 > 0)
+    {
+      digitalWrite (STEER_ON_PIN, ST_ON);
+      while (computeAngleLeft() > 0) ;
+      digitalWrite (STEER_ON_PIN, ST_OFF);
+    }
+    // centered. Now pause and move right.
+    digitalWrite (STEER_ON_PIN, ST_OFF);
+    delay(1000);
+    analogWrite(STEER_SPEED_PIN, 170);     // faster steer control
+    digitalWrite (STEER_ON_PIN, ST_ON);
+    while (computeAngleLeft() <  MAX_RIGHT_DEGx10) ;
+    digitalWrite (STEER_ON_PIN, ST_OFF);
+    delay(1000);
+
+    // move left
+    digitalWrite (STEER_DIR_PIN, ST_LEFT);
+    digitalWrite (STEER_ON_PIN, ST_ON);
+    while (computeAngleLeft() > MIN_LEFT_DEGx10) ;
+    digitalWrite (STEER_ON_PIN, ST_OFF);
+    delay(1000);
+    // back to center
+    digitalWrite (STEER_DIR_PIN, ST_RIGHT);
+    digitalWrite (STEER_ON_PIN, ST_ON);
+    while (computeAngleLeft() < 0) ;
+    digitalWrite (STEER_ON_PIN, ST_OFF);
+    }
+  }
+
+

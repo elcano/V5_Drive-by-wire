@@ -29,7 +29,7 @@ Minimum and maximum speed allowed
 /*=========================================================================
 Settings for the Steering */
 #define STR_PWM     0
-#define SRT_HBRIDGE 1
+#define STR_HBRIDGE 1
 #define STR_MOTOR_CONTROL 2
 // Yellow trike uses pulse width steering servo
 // #define STEER_METHOD STR_PWM

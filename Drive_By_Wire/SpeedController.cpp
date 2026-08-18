@@ -68,7 +68,8 @@ int32_t SpeedController::update(int32_t dSpeed, DriveMode mode) {
     return 0;
   }
 
-  //Reverse doesn't seem to work
+  // Kelley e-bike controller is capbale of reverse, but trike freewheel will prevent it.
+  // Need a fixed sprocket to implement reverse
   // if (mode == REVERSE_MODE) {
   //   dSpeed = constrain(dSpeed, 0, 150);  // prevent negatives
   //   dSpeed = map(dSpeed, 0, 150, 150, 0);  // invert DAC for reverse, or just limit
@@ -201,4 +202,44 @@ void SpeedController::Stop() {
     digitalWrite(BRAKE_VOLT_PIN, OFF_BR);   // Use 12V activation  
     state = BR_LO_VOLTS;
   }
+}
+//___________________________________________________________________________
+void SpeedController::test() {
+  int i;
+  for (i = 0; i < 2; i++)  // pump brakes twice
+  {
+    digitalWrite(BRAKE_VOLT_PIN, ON_BR);   // Use 24V activation
+    digitalWrite(BRAKE_ON_PIN, ON_BR);     // Apply brakes
+    delay(800);
+    digitalWrite(BRAKE_VOLT_PIN, OFF_BR);   // Use 12V to hold
+    delay(1200);
+    digitalWrite(BRAKE_ON_PIN, OFF_BR);     // release brakes
+    delay(2000);
+  }
+  digitalWrite(BRAKE_VOLT_PIN, ON_BR);   // Use 24V activation
+  digitalWrite(BRAKE_ON_PIN, ON_BR);     // Apply brakes
+  delay(800);
+  digitalWrite(BRAKE_VOLT_PIN, OFF_BR);   // Use 12V to hold
+
+  // ramp up throttle with brakes on
+  for (i = 50; i < 250; i++)
+  {
+    analogWrite(DAC0, i);
+    delay(15);
+  }
+  analogWrite(DAC0, 0);   // stop
+  delay(1000);            // wait for motor to stop
+  digitalWrite(BRAKE_ON_PIN, OFF_BR);     // release brakes
+// move the trike
+  for (i = 50; i < 150; i++)
+  {
+    analogWrite(DAC0, i);
+    delay(15);
+  } 
+// stop and apply brakes
+  analogWrite(DAC0,0); 
+  digitalWrite(BRAKE_VOLT_PIN, ON_BR);   // Use 24V activation
+  digitalWrite(BRAKE_ON_PIN, ON_BR);// Apply brakes
+  delay(800);
+  digitalWrite(BRAKE_VOLT_PIN, OFF_BR);   // Use 12V to hold
 }

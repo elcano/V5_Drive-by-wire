@@ -50,6 +50,7 @@ Vehicle::Vehicle()
   // on this Due; confirmed by DBW_CAN_RX_Test that catch-all receives 0x350
   // and 0x100 correctly. Single call leaves TX mailboxes free for sendCan().
   Can0.watchFor();
+  FirstTime = true;
   Serial.println("Vehicle constructor finished.");
 }
 
@@ -110,6 +111,20 @@ void Vehicle::update() {
     }
    //recieveCan();  //check for new message  
    }
+  //____________-Check for actuator test on initialization_____________________________
+  if (FirstTime)
+  {
+    FirstTime = false;
+    if (currentDriveMode == REVERSE_MODE && currentAutoMode == MANUAL_MODE)
+    {
+      // Set status LED to cyan to show testing
+      digitalWrite(RED_LED_PIN,LOW);  // Blue and green are already high
+      steer->test();
+      throttle->test();
+       // Set status LED to white to show initializing
+      digitalWrite(RED_LED_PIN,HIGH);
+    }
+  }
   //_____________Implement desired values__________________________________________________
 
   // Brake-over-throttle safety: an explicit brake command must dominate any
@@ -157,8 +172,8 @@ void Vehicle::updateRC() {
   currentDriveMode = RC->getDriveMode();
   for (int i = 0; i < RC_NUM_SIGNALS; i++)
   {
-    RCtime[i] = RC->getEtime(i);
-    RCMapped[i] = RC->getMappedValue(i);
+    RCtime[i] = RC->getEtime(i);  // Get the width of the pulse from RC: 1000 to 2000 us
+    RCMapped[i] = RC->getMappedValue(i); // Convert pulse width
   }
 }
 //*************************************************************************************
