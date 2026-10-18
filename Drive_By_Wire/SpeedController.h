@@ -1,4 +1,5 @@
 #pragma once
+#include "src/tests/FirmwareMode.h"
 #include "Settings.h"
 #include <SPI.h>
 #include "PID.h"
@@ -55,6 +56,15 @@ public:
   int32_t update(int32_t dSpeed, DriveMode mode);
   void ReleaseBrakes();
   void test();
+#if DBW_SERIAL_TEST_MODE
+  enum class Startup { Diagnostic };
+  explicit SpeedController(Startup startup);
+  void testStop();
+  void serviceBrakes();
+  bool brakesApplied() const { return state != BR_OFF; }
+  bool brakeBoostActive() const { return state == BR_HI_VOLTS; }
+  bool testThrottle(uint8_t value);
+#endif
  };
 //_______________Brakes___________________________
 /* Solenoid controlled Brakes.

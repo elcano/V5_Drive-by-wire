@@ -1,5 +1,6 @@
 #pragma once
 
+#include "src/tests/FirmwareMode.h"
 #include <Servo.h>
 #include "PID.h"
 
@@ -49,5 +50,15 @@ public:
   // Optional use of right sensor (if supported)
   int computeAngleRight();
   void test();
+#if DBW_SERIAL_TEST_MODE
+  enum class Startup { Diagnostic };
+  explicit SteeringController(Startup startup);
+  int testAngleLeft();
+  int readLeftSensorRaw() const;
+  void testMotor(bool turnLeft, uint8_t pwm);
+  bool testPulse(uint16_t width_us);
+  void stopTest();
+  bool pulseTestActive() { return Steer_Servo.attached(); }
+#endif
 };
 

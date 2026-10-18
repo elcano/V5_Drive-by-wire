@@ -66,6 +66,12 @@ Vehicle::~Vehicle() {
    Change Vehicle speed and steering angle settings
  *******************************************************************************************************/
 void Vehicle::update() {
+#if DBW_SERIAL_TEST_MODE
+  if (diagnosticMode) {
+    test();
+    return;
+  }
+#endif
   // ____First, get desired values___________________________________________________
   // currentAutoMode is set by updateRC() before update() is called.
   // Do not re-derive it here; int2Auto() expects switch positions, not AutoMode enum values.
@@ -153,6 +159,9 @@ void Vehicle::update() {
 }
 //*************************************************************************************
 void Vehicle::updateRC() {
+#if DBW_SERIAL_TEST_MODE
+  if (diagnosticMode) return;
+#endif
   currentAutoMode = RC->updateMode(currentAutoMode);
 
   // Record what each source is asking for, regardless of which one is selected.
@@ -188,6 +197,9 @@ AutoMode Vehicle::int2Auto( int amode)
 *  Send current vehicle velocity over CAN
 *************************************************************************************/
 bool Vehicle::sendCan() {
+#if DBW_SERIAL_TEST_MODE
+  if (diagnosticMode) return false;
+#endif
   if (Can0.sendFrame(outgoing))
     return (true);
   else 
@@ -207,6 +219,9 @@ bool Vehicle::sendCan() {
                     0x02=reverse pending, 0x01=reverse unavailable
  ************************************************************************************/
 void Vehicle::receiveCan() {
+#if DBW_SERIAL_TEST_MODE
+  if (diagnosticMode) return;
+#endif
   while (Can0.available() > 0) {
     Can0.read(incoming);
     if (incoming.id == HiDrive_CANID) {
