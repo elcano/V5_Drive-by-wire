@@ -29,9 +29,14 @@ case STR_HBRIDGE:
     break;
 
   case STR_PWM:
-  // To do: Send STEER_PULSE_PIN high, and set a timing interrupt to take it low at 1500 us. to center the steering
-  // PID controller is not used. 
+  // Servo actuator on STEER_PULSE_PIN. The Servo library repeats the pulse
+  // every 20 ms on a hardware timer; we only set its width. The servo does its
+  // own position control, so the PID controller is not used.
+  // attach() with our limits makes writeMicroseconds() clamp to them.
     steerPID.SetControlLimits(MIN_LEFT_US, MAX_RIGHT_US);
+    Steer_Servo.attach(STEER_PULSE_PIN, MIN_LEFT_US, MAX_RIGHT_US);
+    Steer_Servo.writeMicroseconds(STRAIGHT_US);  // center the steering
+    currentSteering_us = STRAIGHT_US;
     break;
 
   case STR_MOTOR_CONTROL:
@@ -68,6 +73,17 @@ int SteeringController::update(int desiredangle_DegX10, int measured_angle_DegX1
   // loop. This keeps DBW operational in degraded environments — sim with
   // no 0x430 publisher, or real trike whose sensors are absent.
   if (measured_angle_DegX10 != 0) haveMeasured = true;
+
+#if (STEER_METHOD == STR_PWM)
+  // The servo goes where the pulse tells it, so without feedback the best
+  // estimate of the wheel angle is the last commanded angle. The open-loop
+  // step model below is for the two-wire H-bridge and does not apply here.
+  SteeringPID(desiredangle_DegX10);
+  steerAngle_DegX10 = haveMeasured ? (float)measured_angle_DegX10
+                                   : (float)pulseToAngle(currentSteering_us);
+  currentAngle_DegX10 = (int)steerAngle_DegX10;
+  return currentAngle_DegX10;
+#endif
 
   if (haveMeasured) {
     steerAngle_DegX10 = (float)measured_angle_DegX10;
@@ -129,8 +145,11 @@ void SteeringController::SteeringPID(int input_DegX10) {
   digitalWrite(LEFT_TURN_PIN,  turnLeft  ? HIGH : LOW);
   digitalWrite(RIGHT_TURN_PIN, turnRight ? HIGH : LOW);
 #else  // pulse width
-  // To do: Find servo destination and write high to STEER_PULSE_PIN. 
-  // Set a timer to take pulse low according to desired pulse width.
+  // The servo holds position on its own, so no deadband or direction wires:
+  // just send the pulse width for the desired angle.
+  turnLeft = turnRight = false;
+  currentSteering_us = angleToPulse(input_DegX10);
+  Steer_Servo.writeMicroseconds(currentSteering_us);
 #endif
   drovLeftLast  = turnLeft;
   drovRightLast = turnRight;
@@ -146,8 +165,30 @@ void SteeringController::SteeringPID(int input_DegX10) {
     SerialUSB.print(" modeled=");        SerialUSB.print((int)steerAngle_DegX10);
     SerialUSB.print(" err=");            SerialUSB.print(err);
     SerialUSB.print(" L=");              SerialUSB.print(turnLeft  ? 1 : 0);
-    SerialUSB.print(" R=");              SerialUSB.println(turnRight ? 1 : 0);
+    SerialUSB.print(" R=");              SerialUSB.print(turnRight ? 1 : 0);
+    SerialUSB.print(" us=");             SerialUSB.println(currentSteering_us);
   }
+}
+/*-----------------------------------------------------------------------------------*/
+// Pulse width for a wheel angle. Left and right are interpolated separately
+// because the pulse limits and the angle limits are not symmetric about
+// straight (e.g. 1000/1500/1850 us for -240/0/+250 degX10). All five numbers
+// come from Settings.h and are found experimentally for each vehicle.
+int SteeringController::angleToPulse(int angle_DegX10) {
+  if (angle_DegX10 < MIN_LEFT_DEGx10)  angle_DegX10 = MIN_LEFT_DEGx10;
+  if (angle_DegX10 > MAX_RIGHT_DEGx10) angle_DegX10 = MAX_RIGHT_DEGx10;
+  if (angle_DegX10 < 0)
+    return STRAIGHT_US + (long)angle_DegX10 * (STRAIGHT_US - MIN_LEFT_US) / (-MIN_LEFT_DEGx10);
+  return STRAIGHT_US + (long)angle_DegX10 * (MAX_RIGHT_US - STRAIGHT_US) / MAX_RIGHT_DEGx10;
+}
+/*-----------------------------------------------------------------------------------*/
+// Inverse of angleToPulse.
+int SteeringController::pulseToAngle(int pulse_us) {
+  if (pulse_us < MIN_LEFT_US)  pulse_us = MIN_LEFT_US;
+  if (pulse_us > MAX_RIGHT_US) pulse_us = MAX_RIGHT_US;
+  if (pulse_us < STRAIGHT_US)
+    return (long)(pulse_us - STRAIGHT_US) * (-MIN_LEFT_DEGx10) / (STRAIGHT_US - MIN_LEFT_US);
+  return (long)(pulse_us - STRAIGHT_US) * MAX_RIGHT_DEGx10 / (MAX_RIGHT_US - STRAIGHT_US);
 }
 /*-----------------------------------------------------------------------------------*/
 // Get data from sensor on left steering column.
@@ -222,8 +263,16 @@ void SteeringController::test() {
     break;
 
   case STR_PWM:
-  // To do: Send STEER_PULSE_PIN high, and set a timing interrupt to take it low at 1500 us. to center the steering
-  // then MIN_LEFT_US  for left, MAX_RIGHT_U for right, 1500 to center.
+  // Center, full left, full right, center. Watch where the wheels land to
+  // check the MIN_LEFT_US / MAX_RIGHT_US / STRAIGHT_US values in Settings.h.
+    Steer_Servo.writeMicroseconds(STRAIGHT_US);
+    delay(1000);
+    Steer_Servo.writeMicroseconds(MIN_LEFT_US);
+    delay(1000);
+    Steer_Servo.writeMicroseconds(MAX_RIGHT_US);
+    delay(1000);
+    Steer_Servo.writeMicroseconds(STRAIGHT_US);
+    currentSteering_us = STRAIGHT_US;
     break;
 
   case STR_MOTOR_CONTROL:

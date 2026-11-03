@@ -33,6 +33,9 @@ private:
   // Private methods
   void SteeringPID(int input);
    int computeAngleLeft();
+  // STR_PWM: convert between wheel angle (degX10) and servo pulse (us)
+  int angleToPulse(int angle_DegX10);
+  int pulseToAngle(int pulse_us);
 
 public:
   SteeringController();
