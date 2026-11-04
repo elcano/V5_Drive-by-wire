@@ -241,19 +241,19 @@ void RC_Controller::opUpdate() {
   // Steering uses its own, wider deadband - see the note in Settings.h. The
   // throttle axis drags this one with it, so a band sized for throttle alone
   // let a deliberate throttle push produce unintended steering.
-  if (turn <  OP_MIDLO)  // turn left
-      opRequest[CH1] = MAP(turn, OP_MIN, OP_MIDLO, MIN_LEFT_DEGx10, 0);
-  if (turn >  OP_MIDHI)  // turn right
-      opRequest[CH1] = MAP(turn, OP_MIDHI,OP_MAX, 0, MAX_RIGHT_DEGx10);
+  if (turn <  OP_STEER_MIDLO)  // turn left
+      opRequest[CH1] = MAP(turn, OP_MIN, OP_STEER_MIDLO, MIN_LEFT_DEGx10, 0);
+  if (turn >  OP_STEER_MIDHI)  // turn right
+      opRequest[CH1] = MAP(turn, OP_STEER_MIDHI,OP_MAX, 0, MAX_RIGHT_DEGx10);
 
   opRequest[CH2] = 0;  // coast
-  if (throttle <  OP_MIDLO)
+  if (throttle <  OP_THROTTLE_MIDLO)
       opRequest[CH2] = -1; // brake
-  if (throttle >  OP_MIDHI)
+  if (throttle >  OP_THROTTLE_MIDHI)
       // cm/s, not mm/s: Vehicle::updateRC() assigns this straight into
       // desired_speed_cmPs, so mapping to MAX_SPEED_mmPs asked for 10x the
       // intended top speed and gave the throttle PID an unreachable setpoint.
-      opRequest[CH2] = MAP(throttle,OP_MIDHI,OP_MAX, 0,MAX_SPEED_cmPs);
+      opRequest[CH2] = MAP(throttle,OP_THROTTLE_MIDHI,OP_MAX, 0,MAX_SPEED_cmPs);
 
   opRequest[CH3] = digitalRead(OP_FWD_PIN)? HIGH: LOW;
   opDriveMode = (opRequest[CH3])? REVERSE_MODE: FORWARD_MODE;
