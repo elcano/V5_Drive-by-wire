@@ -1,3 +1,6 @@
 Full KiCAD project for DBW circuit board
 
 There is a subdirectory for the power box.
+
+The main KiCAD project has lost the link to the schematics. 
+The zip file contains the three sheets of as-built schematics as Low_Level4_1_x.kicad.sch
