@@ -1,0 +1,32 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION (( 'STEP AP214' ),
+    '1' );
+FILE_NAME ('TrikeModel.STEP',
+    '2026-08-20T00:42:04',
+    ( '' ),
+    ( '' ),
+    'SwSTEP 2.0',
+    'SolidWorks 2025',
+    '' );
+FILE_SCHEMA (( 'AUTOMOTIVE_DESIGN' ));
+ENDSEC;
+
+DATA;
+#1 = APPLICATION_PROTOCOL_DEFINITION ( 'draft international standard', 'automotive_design', 1998, #8 ) ;
+#2 = PRODUCT_DEFINITION_CONTEXT ( 'detailed design', #9, 'design' ) ;
+#3 = PRODUCT_RELATED_PRODUCT_CATEGORY ( 'part', '', ( #14 ) ) ;
+#4 = AXIS2_PLACEMENT_3D ( 'NONE', #6, #7, #15 ) ;
+#5 = APPLICATION_PROTOCOL_DEFINITION ( 'draft international standard', 'automotive_design', 1998, #9 ) ;
+#6 = CARTESIAN_POINT ( 'NONE',  ( 0.000000000000000000, 0.000000000000000000, 0.000000000000000000 ) ) ;
+#7 = DIRECTION ( 'NONE',  ( 0.000000000000000000, 0.000000000000000000, 1.000000000000000000 ) ) ;
+#8 = APPLICATION_CONTEXT ( 'automotive_design' ) ;
+#9 = APPLICATION_CONTEXT ( 'automotive_design' ) ;
+#10 = PRODUCT_CONTEXT ( 'NONE', #8, 'mechanical' ) ;
+#11 = PRODUCT_DEFINITION_SHAPE ( 'NONE', 'NONE',  #13 ) ;
+#12 = PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE ( 'Symmetric', '', #14, .NOT_KNOWN. ) ;
+#13 = PRODUCT_DEFINITION ( 'General', '', #12, #2 ) ;
+#14 = PRODUCT ( 'TrikeModel', 'TrikeModel', '', ( #10 ) ) ;
+#15 = DIRECTION ( 'NONE',  ( 1.000000000000000000, 0.000000000000000000, 0.000000000000000000 ) ) ;
+ENDSEC;
+END-ISO-10303-21;
