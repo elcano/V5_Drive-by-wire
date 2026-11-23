@@ -1,1 +1,4 @@
 CAD files and other mechanical designs
+
+Highly preferred to double check the physical object along with the CAD files before printing to avoid errors in printing the wrong model.
+STEP files could be viewed from Onshape although Solidworks is recommended for SLDPRT. STL files are still accessible if printing is required.
