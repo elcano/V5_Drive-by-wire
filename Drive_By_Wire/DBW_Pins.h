@@ -117,7 +117,8 @@
 #define STEER_SPEED_PIN     3
 #define STEER_ON_PIN        9
 #define STEER_DIR_PIN       12
-#define ST_ON  HIGH
+// Steer on LOW works with motor control board
+#define ST_ON  LOW
 #define ST_OFF (!ST_ON)
 #define ST_LEFT HIGH
 #define ST_RIGHT (!ST_LEFT)
